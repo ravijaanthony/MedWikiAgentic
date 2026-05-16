@@ -161,7 +161,8 @@ jobs:
       packages: read   # GITHUB_TOKEN must read GHCR when the Droplet pulls images
     environment:
       name: production
-      url: http://${{ secrets.DROPLET_HOST }}
+      # environment.url cannot reference secrets — use the public Droplet URL
+      url: http://167.71.21.93
 
     steps:
       - name: Checkout
