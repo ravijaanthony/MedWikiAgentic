@@ -216,20 +216,29 @@ jobs:
             fi
             if [ "$NEEDS_DOCKER" -eq 1 ] || [ "$NEEDS_COMPOSE" -eq 1 ]; then
               echo "Installing missing Docker components..."
+              SUDO=""
               if [ "$(id -u)" -ne 0 ]; then
-                echo "Error: Docker installation requires root privileges. Ensure the deployment user has sudo access or run as root."
-                exit 1
+                if command -v sudo >/dev/null 2>&1; then
+                  SUDO="sudo"
+                else
+                  echo "Error: Docker installation requires root privileges or sudo access."
+                  exit 1
+                fi
               fi
               echo "Updating package lists..."
-              apt-get update -y || { echo "Failed to update package lists."; exit 1; }
+              $SUDO apt-get update -y || { echo "Failed to update package lists."; exit 1; }
               if [ "$NEEDS_DOCKER" -eq 1 ]; then
                 echo "Installing Docker Engine (docker.io from distro repositories; use Docker CE repo for newer versions)..."
-                apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
-                systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
+                $SUDO apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
+                $SUDO systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
               fi
               if [ "$NEEDS_COMPOSE" -eq 1 ]; then
                 echo "Installing Docker Compose plugin..."
-                apt-get install -y docker-compose-plugin || { echo "Failed to install docker-compose-plugin. Ensure the package is available or add Docker's official apt repository."; exit 1; }
+                if ! $SUDO apt-get install -y docker-compose-plugin; then
+                  echo "Failed to install docker-compose-plugin."
+                  echo "Ensure the package is available or add Docker's official apt repository."
+                  exit 1
+                fi
               fi
             fi
 
