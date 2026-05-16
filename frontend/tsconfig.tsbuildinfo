@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/api/client.ts","./src/components/profilesyncmodal.tsx","./src/components/specialisttabs.tsx","./src/components/stagestepper.tsx","./src/components/transcriptpanel.tsx","./src/components/warningbanner.tsx","./src/pages/consultpage.tsx","./src/pages/onboardingpage.tsx","./src/pages/resultspage.tsx"],"errors":true,"version":"5.9.3"}

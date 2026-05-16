@@ -1,75 +1,102 @@
-# React + TypeScript + Vite
+# MedWiki — Ambient Medical Intelligence
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Buildathon MVP: LangGraph pipeline with VALSEA ingest, LLM refinement (Gemini/OpenAI), parallel specialist agents (Vitals, Safety, Advocate, Clinical), and integrity validation. Polished demo UI included.
 
-Currently, two official plugins are available:
+**Tagline:** Ambient Medical Intelligence with Human-Centric Safety.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Quick start (5 minutes)
 
-## React Compiler
+### Prerequisites
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+- Python 3.11+
+- Node.js 18+
 
-Note: This will impact Vite dev & build performances.
+### Backend
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate   # Windows
+pip install -e ".[dev]"
+copy .env.example .env     # optional: set GEMINI_API_KEY and/or OPENAI_API_KEY
+uvicorn app.main:app --reload --port 8000
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+API: http://127.0.0.1:8000 — health check at `/health` (includes active `llm_provider`)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### LLM keys (auto-detect)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+The backend picks the LLM provider automatically:
+
+1. **`GEMINI_API_KEY` set** → Google Gemini (`gemini-2.0-flash` by default)
+2. Else **`OPENAI_API_KEY` set** → OpenAI (`gpt-4o-mini` by default)
+3. Else → heuristic fallbacks (demo still works)
+
+If **both** keys are set, **Gemini is used**. Get a key from [Google AI Studio](https://aistudio.google.com/apikey).
+
+```env
+GEMINI_API_KEY=your_key_here
+GEMINI_REFINE_MODEL=gemini-2.0-flash
+GEMINI_AGENT_MODEL=gemini-2.0-flash
 ```
+
+A **demo patient** (Mr Tan, penicillin allergy) is seeded on startup.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+UI: http://localhost:5173 (proxies `/api` → backend)
+
+## Demo script (~90 seconds)
+
+1. Open **Onboarding** — note demo patient or create one with allergies.
+2. **Consult** → select patient → **Demo fixture** → Run pipeline.
+3. **Results** — watch stage stepper; Safety tab shows **penicillin / amoxicillin warn** (warn-only, not block).
+4. Click a **citation chip** — transcript highlights verbatim span.
+5. **Profile sync** modal — add Amoxicillin to permanent meds.
+
+## Architecture
+
+```
+VALSEA ingest → Refine (o1/mini) → Dispatch → Parallel specialists → Merge → Integrity
+                     ↑                                                      |
+                     └──────── retry (max 1) ─────────────────────────────┘
+```
+
+- **Safety:** NIH RxNav (DDI) + OpenFDA (indications) + patient allergy cross-check — always `warn`.
+- **Citations:** Every insight requires `verbatim_citation` in ground-truth transcript.
+- **Fixtures:** Works without API keys via Singlish demo transcript.
+
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/patients` | List patients |
+| POST | `/patients` | Create patient profile |
+| POST | `/consultations` | Start pipeline (multipart: patient_id, use_fixture, transcript, audio) |
+| GET | `/consultations/{id}` | Poll state |
+| GET | `/consultations/{id}/events` | SSE stream |
+| POST | `/consultations/{id}/acknowledge-warnings` | Dismiss warnings |
+
+## Tests
+
+```bash
+cd backend
+pytest
+```
+
+## Stack (non-negotiable per brief)
+
+- **VALSEA** — transcription (fixture fallback)
+- **LangGraph** — orchestration
+- **Gemini or OpenAI** — refinement + agents (auto-detect via env keys)
+- **RxNav + OpenFDA** — medical validation
+
+## FigJam reference
+
+[Buildathon proposed flow diagram](https://www.figma.com/board/QIbNvjnWmmWZDC5pOdzln6/Buildathon-proposed-flow-diagram)
