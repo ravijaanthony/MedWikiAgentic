@@ -23,19 +23,59 @@ export function useAudioRecorder() {
   const [durationSec, setDurationSec] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [analyserNode, setAnalyserNode] = useState<AnalyserNode | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const mimeTypeRef = useRef("");
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const accumulatedMsRef = useRef(0);
 
+  const teardownAnalyser = useCallback(() => {
+    sourceRef.current?.disconnect();
+    sourceRef.current = null;
+    analyserRef.current = null;
+    setAnalyserNode(null);
+    if (audioContextRef.current) {
+      void audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }, []);
+
   const stopTracks = useCallback(() => {
+    teardownAnalyser();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-  }, []);
+  }, [teardownAnalyser]);
+
+  const attachAnalyser = useCallback(async (stream: MediaStream) => {
+    teardownAnalyser();
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const audioContext = new AudioCtx();
+    await audioContext.resume().catch(() => {});
+
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.78;
+    analyser.minDecibels = -85;
+    analyser.maxDecibels = -10;
+    source.connect(analyser);
+
+    audioContextRef.current = audioContext;
+    sourceRef.current = source;
+    analyserRef.current = analyser;
+    setAnalyserNode(analyser);
+  }, [teardownAnalyser]);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -80,8 +120,15 @@ export function useAudioRecorder() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       streamRef.current = stream;
+      await attachAnalyser(stream);
       const mimeType = pickMimeType();
       mimeTypeRef.current = mimeType;
       const recorder = mimeType
@@ -126,7 +173,7 @@ export function useAudioRecorder() {
       setStatus("idle");
       stopTracks();
     }
-  }, [clearTimer, startTimer, stopTracks]);
+  }, [attachAnalyser, clearTimer, startTimer, stopTracks]);
 
   const pause = useCallback(() => {
     const recorder = mediaRecorderRef.current;
@@ -184,6 +231,7 @@ export function useAudioRecorder() {
     durationLabel: formatDuration(durationSec),
     error,
     recordedBlob,
+    analyser: analyserNode,
     start,
     pause,
     resume,
