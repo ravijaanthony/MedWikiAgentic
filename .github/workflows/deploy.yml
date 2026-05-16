@@ -198,8 +198,21 @@ jobs:
             if ! command -v docker >/dev/null 2>&1; then
               NEEDS_DOCKER=1
               NEEDS_COMPOSE=1
-            elif ! docker compose version >/dev/null 2>&1; then
-              NEEDS_COMPOSE=1
+            else
+              HAS_COMPOSE=0
+              if docker compose version --short >/dev/null 2>&1; then
+                HAS_COMPOSE=1
+              else
+                for path in /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose; do
+                  if [ -x "$path" ]; then
+                    HAS_COMPOSE=1
+                    break
+                  fi
+                done
+              fi
+              if [ "$HAS_COMPOSE" -ne 1 ]; then
+                NEEDS_COMPOSE=1
+              fi
             fi
             if [ "$NEEDS_DOCKER" -eq 1 ] || [ "$NEEDS_COMPOSE" -eq 1 ]; then
               echo "Installing missing Docker components..."
@@ -210,13 +223,13 @@ jobs:
               echo "Updating package lists..."
               apt-get update -y || { echo "Failed to update package lists."; exit 1; }
               if [ "$NEEDS_DOCKER" -eq 1 ]; then
-                echo "Installing Docker Engine (docker.io from distro repositories)..."
+                echo "Installing Docker Engine (docker.io from distro repositories; use Docker CE repo for newer versions)..."
                 apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
                 systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
               fi
               if [ "$NEEDS_COMPOSE" -eq 1 ]; then
                 echo "Installing Docker Compose plugin..."
-                apt-get install -y docker-compose-plugin || { echo "Failed to install docker-compose-plugin. Ensure the package is available in your repositories."; exit 1; }
+                apt-get install -y docker-compose-plugin || { echo "Failed to install docker-compose-plugin. Ensure the package is available or add Docker's official apt repository."; exit 1; }
               fi
             fi
 
