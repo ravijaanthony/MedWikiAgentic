@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# MedWiki — Production Compose file for DigitalOcean Droplet
+#
+# Uses pre-built images from GitHub Container Registry (GHCR).
+# Do NOT use this for local development; use docker-compose.yml instead.
+#
+# Required environment variables (exported before `docker compose up`, or
+# written to /opt/medwiki/.env on the Droplet by the GitHub Actions workflow):
+#
+#   GHCR_OWNER   GitHub username / org that owns the packages
+#                e.g.  export GHCR_OWNER=myusername
+#
+#   IMAGE_TAG    Git SHA tag written by the workflow, e.g. sha-abc1234…
+#                Falls back to `latest` if not set.
+#
+# Runtime secrets (never stored in this file or in the repo):
+#   backend/.env  — DATABASE_URL, SUPABASE_URL, SUPABASE_JWT_SECRET,
+#                   GEMINI_API_KEY / OPENAI_API_KEY, CORS_ORIGINS, etc.
+#                   Create this file manually on the Droplet once:
+#                     mkdir -p /opt/medwiki/backend
+#                     nano /opt/medwiki/backend/.env
+#
+# Usage on Droplet (the workflow runs this automatically):
+#   export GHCR_OWNER=<owner> IMAGE_TAG=<sha>
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d --remove-orphans
+# ---------------------------------------------------------------------------
+
+services:
+  backend:
+    image: ghcr.io/${GHCR_OWNER}/medwiki-backend:${IMAGE_TAG:-latest}
+    env_file: ./backend/.env
+    restart: unless-stopped
+    networks:
+      - medwiki
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    image: ghcr.io/${GHCR_OWNER}/medwiki-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - medwiki
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  medwiki:
+    driver: bridge

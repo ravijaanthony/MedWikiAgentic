@@ -107,6 +107,25 @@ export async function getMe(): Promise<Patient | null> {
   return unwrap<Patient>(res, "Failed to load profile");
 }
 
+export type CreatePatientPayload = {
+  display_name: string;
+  allergies: string[];
+  current_meds: string[];
+  demographics: { age: number | null; sex: string | null };
+  linguistic_signature: string;
+};
+
+export async function createPatient(payload: CreatePatientPayload): Promise<Patient> {
+  return upsertMe({
+    display_name: payload.display_name,
+    allergies: payload.allergies,
+    current_meds: payload.current_meds,
+    age: payload.demographics.age,
+    sex: payload.demographics.sex,
+    linguistic_signature: payload.linguistic_signature,
+  });
+}
+
 export async function upsertMe(payload: ProfileUpsertPayload): Promise<Patient> {
   const res = await api("/me", {
     method: "POST",

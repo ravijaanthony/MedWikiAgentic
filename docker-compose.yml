@@ -1,20 +1,29 @@
 services:
-  api:
+  backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      - DATABASE_URL=sqlite:///./swaramed.db
-    volumes:
-      - ./backend:/app
+    image: medwiki-backend:latest
+    env_file: ./backend/.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  ui:
+  frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      args:
+        # Vite bakes these into the bundle at build time — set them before
+        # running `docker compose build` or `docker compose up --build`.
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY}
+    image: medwiki-frontend:latest
     ports:
-      - "5173:5173"
+      - "80:80"
     depends_on:
-      - api
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
