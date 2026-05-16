@@ -233,8 +233,8 @@ jobs:
               echo "Updating package lists..."
               $SUDO apt-get update -y || { echo "Failed to update package lists. Check network connectivity and repository configuration."; exit 1; }
               if [ "$NEEDS_DOCKER_INSTALL" = "true" ]; then
-                echo "Installing Docker Engine (docker.io from distro repositories)."
-                echo "For Docker CE packages, see: https://docs.docker.com/engine/install/"
+                echo "Installing docker.io (distro build)."
+                echo "For Docker CE (official packages), see: https://docs.docker.com/engine/install/"
                 $SUDO apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
                 $SUDO systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
               fi
