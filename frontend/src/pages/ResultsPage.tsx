@@ -23,6 +23,7 @@ export default function ResultsPage() {
   const [showSync, setShowSync] = useState(false);
   const [syncDrug, setSyncDrug] = useState("Amoxicillin");
   const profileSyncShownRef = useRef(false);
+  const completedRef = useRef(false);
 
   const completedNodes = useMemo(() => {
     const nodes = new Set<string>();
@@ -32,42 +33,46 @@ export default function ResultsPage() {
     return nodes;
   }, [state.events]);
 
-  const maybeShowProfileSync = useCallback(
-    (consultState: ConsultationState) => {
-      if (!runId || profileSyncShownRef.current || isProfileSyncHandled(runId)) return;
-      const entities = consultState.resolved_entities || [];
-      const prescribed = entities.find((e) => {
-        const g = (e.generic || "").toLowerCase();
-        return g && !consultState.patient_context?.current_meds?.some((m) => m.toLowerCase().includes(g));
-      });
-      if (!prescribed) return;
-      profileSyncShownRef.current = true;
-      setSyncDrug(prescribed.generic || prescribed.brand || "medication");
-      setShowSync(true);
-    },
-    [runId]
-  );
-
-  const refresh = useCallback(async () => {
-    if (!runId) return;
-    const data = await getConsultation(runId);
-    setStatus(data.status);
-    setState(data.state);
-    if (data.status === "completed") {
-      maybeShowProfileSync(data.state);
-    }
-  }, [runId, maybeShowProfileSync]);
+  const maybeShowProfileSync = useCallback((consultState: ConsultationState) => {
+    if (!runId || profileSyncShownRef.current || isProfileSyncHandled(runId)) return;
+    const entities = consultState.resolved_entities || [];
+    const prescribed = entities.find((e) => {
+      const g = (e.generic || "").toLowerCase();
+      return g && !consultState.patient_context?.current_meds?.some((m) => m.toLowerCase().includes(g));
+    });
+    if (!prescribed) return;
+    profileSyncShownRef.current = true;
+    setSyncDrug(prescribed.generic || prescribed.brand || "medication");
+    setShowSync(true);
+  }, [runId]);
 
   useEffect(() => {
     if (!runId) return;
-    profileSyncShownRef.current = isProfileSyncHandled(runId);
-    const completedRef = { current: false };
 
-    refresh();
+    completedRef.current = false;
+    profileSyncShownRef.current = isProfileSyncHandled(runId);
+    let cancelled = false;
+
+    getConsultation(runId)
+      .then((data) => {
+        if (cancelled) return;
+        setStatus(data.status);
+        setState(data.state);
+        if (data.status === "completed") {
+          completedRef.current = true;
+          maybeShowProfileSync(data.state);
+        }
+      })
+      .catch(() => {
+        /* polling via SSE will retry state */
+      });
+
     const unsub = subscribeConsultation(runId, (raw) => {
+      if (cancelled) return;
       const msg = raw as { type?: string; state?: ConsultationState };
-      if (msg.type === "node_update" && msg.state) {
+      if (msg.type === "node_update" && msg.state && !completedRef.current) {
         setState(msg.state);
+        setStatus("running");
       }
       if (msg.type === "complete" && msg.state) {
         completedRef.current = true;
@@ -76,14 +81,12 @@ export default function ResultsPage() {
         maybeShowProfileSync(msg.state);
       }
     });
-    const interval = setInterval(() => {
-      if (!completedRef.current) refresh();
-    }, 3000);
+
     return () => {
+      cancelled = true;
       unsub();
-      clearInterval(interval);
     };
-  }, [runId, refresh, maybeShowProfileSync]);
+  }, [runId, maybeShowProfileSync]);
 
   const warnings = state.warnings || [];
 
@@ -112,7 +115,7 @@ export default function ResultsPage() {
 
   return (
     <div>
-      <header className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-clinical-900">Consultation results</h1>
           <p className="text-sm text-slate-500">
@@ -130,7 +133,7 @@ export default function ResultsPage() {
 
       <WarningBanner warnings={warnings} onDismiss={handleDismiss} />
 
-      <div className="grid lg:grid-cols-2 gap-6 min-h-[480px]">
+      <div className="grid min-h-[480px] gap-6 lg:grid-cols-2">
         <TranscriptPanel transcript={transcript} highlight={highlight} />
         <SpecialistTabs state={state} onCitationClick={setHighlight} />
       </div>

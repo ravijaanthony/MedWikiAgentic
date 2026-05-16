@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from app.graph.builder import get_graph
 from app.state.schemas import PipelineEvent
+from app.utils.warnings import dedupe_warnings
 
 
 class ConsultationStore:
@@ -51,6 +52,7 @@ async def run_consultation(initial_state: dict) -> dict:
                     if key == "warnings" and isinstance(value, list):
                         final_state.setdefault("warnings", [])
                         final_state["warnings"].extend(value)
+                        final_state["warnings"] = dedupe_warnings(final_state["warnings"])
                     elif key == "events" and isinstance(value, list):
                         final_state.setdefault("events", [])
                         final_state["events"].extend(value)
@@ -68,6 +70,9 @@ async def run_consultation(initial_state: dict) -> dict:
                         "state": _public_state(final_state),
                     },
                 )
+
+    if final_state.get("warnings"):
+        final_state["warnings"] = dedupe_warnings(final_state["warnings"])
 
     final_state["status"] = "completed"
     store.set(run_id, {"status": "completed", "state": final_state})

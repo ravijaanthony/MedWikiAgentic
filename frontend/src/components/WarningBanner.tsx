@@ -11,9 +11,9 @@ export default function WarningBanner({ warnings, onDismiss }: Props) {
 
   return (
     <div className="space-y-2 mb-4">
-      {active.map((w) => (
+      {active.map((w, index) => (
         <div
-          key={w.code}
+          key={`${w.code}-${index}-${w.message.slice(0, 32)}`}
           className={`flex items-start justify-between gap-4 rounded-lg border px-4 py-3 ${
             w.severity === "critical"
               ? "bg-amber-50 border-amber-300 text-amber-950"

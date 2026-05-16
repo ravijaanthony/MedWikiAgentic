@@ -18,6 +18,7 @@ async def ingest_node(state: dict) -> dict:
         raw, meta = await transcribe_audio(
             state.get("audio_bytes"),
             use_fixture=state.get("use_fixture", False),
+            allow_fixture_fallback=state.get("use_fixture", False),
         )
 
     events.append(

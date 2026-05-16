@@ -111,7 +111,7 @@ async def safety_node(state: dict) -> dict:
             )
             warnings.append(
                 Warning(
-                    code="INDICATION_WARN",
+                    code=f"INDICATION_WARN_{generic.lower().replace(' ', '_')}",
                     message=f"Review whether {generic} matches patient symptoms.",
                     severity="moderate",
                 ).model_dump()

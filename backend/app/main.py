@@ -8,7 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from app.clients.valsea import transcribe_audio
 from app.config import _ENV_FILE, get_settings
+from app.utils.audio_validation import validate_audio_payload
+from app.utils.warnings import dedupe_warnings
 from app.services.consultation_runner import run_consultation, store, stream_events
 from app.services.patient_context import (
     add_medication,
@@ -120,6 +123,49 @@ def patients_add_med(patient_id: str, body: AddMedicationRequest) -> dict:
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return dump_model(patient)
+
+
+@app.post("/transcribe")
+async def transcribe_consultation_audio(
+    audio: UploadFile = File(...),
+    patient_id: Annotated[str | None, Form()] = None,
+    duration_seconds: Annotated[float | None, Form()] = None,
+    allow_demo_fallback: Annotated[bool, Form()] = False,
+) -> dict:
+    """Transcribe audio via VALSEA. Rejects empty/silent clips; demo fallback only when opted in."""
+    settings = get_settings()
+    audio_bytes = await audio.read()
+    try:
+        validate_audio_payload(audio_bytes, duration_seconds=duration_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dialect = "English"
+    if patient_id:
+        patient = get_patient(patient_id)
+        if patient:
+            dialect = patient.linguistic_signature
+
+    filename = audio.filename or "consultation.webm"
+    content_type = audio.content_type or "audio/webm"
+    try:
+        raw, meta = await transcribe_audio(
+            audio_bytes,
+            use_fixture=False,
+            allow_fixture_fallback=allow_demo_fallback,
+            filename=filename,
+            content_type=content_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    source = "valsea" if settings.valsea_api_key else "fixture"
+    return {
+        "transcript": raw,
+        "metadata": meta,
+        "source": source,
+        "dialect": dialect,
+    }
 
 
 @app.post("/consultations")

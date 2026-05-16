@@ -5,30 +5,57 @@ from app.config import get_settings
 from app.state.schemas import ValseaMetadata, dump_model
 
 
-async def transcribe_audio(audio_bytes: bytes | None, *, use_fixture: bool = False) -> tuple[str, dict]:
+async def transcribe_audio(
+    audio_bytes: bytes | None,
+    *,
+    use_fixture: bool = False,
+    allow_fixture_fallback: bool = False,
+    filename: str = "consultation.wav",
+    content_type: str = "audio/wav",
+) -> tuple[str, dict]:
     settings = get_settings()
-    if use_fixture or not settings.valsea_api_key or not audio_bytes:
+
+    if use_fixture:
         meta = ValseaMetadata.model_validate(FIXTURE_VALSEA_METADATA)
         return FIXTURE_TRANSCRIPT_SINGLISH, dump_model(meta)
 
-    # VALSEA RTT integration placeholder — swap URL/body per VALSEA docs when key is set
+    if not audio_bytes:
+        raise ValueError("No audio data to transcribe.")
+
+    if not settings.valsea_api_key:
+        if allow_fixture_fallback:
+            meta = ValseaMetadata.model_validate(FIXTURE_VALSEA_METADATA)
+            return FIXTURE_TRANSCRIPT_SINGLISH, dump_model(meta)
+        raise ValueError(
+            "VALSEA is not configured. Set VALSEA_API_KEY in backend/.env for live transcription."
+        )
+
+    # VALSEA RTT integration — uploads and live recordings use the same path
     try:
         import httpx
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
                 f"{settings.valsea_base_url.rstrip('/')}/v1/transcribe",
                 headers={"Authorization": f"Bearer {settings.valsea_api_key}"},
-                files={"audio": ("consultation.wav", audio_bytes, "audio/wav")},
+                files={"audio": (filename, audio_bytes, content_type)},
             )
             response.raise_for_status()
             data = response.json()
-            transcript = data.get("transcript", FIXTURE_TRANSCRIPT_SINGLISH)
+            transcript = (data.get("transcript") or "").strip()
             metadata = data.get("metadata", FIXTURE_VALSEA_METADATA)
-            return transcript, metadata
-    except Exception:
-        meta = ValseaMetadata.model_validate(FIXTURE_VALSEA_METADATA)
-        return FIXTURE_TRANSCRIPT_SINGLISH, dump_model(meta)
+            if not transcript:
+                raise ValueError("VALSEA returned an empty transcript.")
+            if isinstance(metadata, dict):
+                return transcript, metadata
+            return transcript, dump_model(ValseaMetadata.model_validate(metadata))
+    except ValueError:
+        raise
+    except Exception as exc:
+        if allow_fixture_fallback:
+            meta = ValseaMetadata.model_validate(FIXTURE_VALSEA_METADATA)
+            return FIXTURE_TRANSCRIPT_SINGLISH, dump_model(meta)
+        raise ValueError(f"VALSEA transcription failed: {exc}") from exc
 
 
 async def transcribe_text(transcript: str, dialect: str = "English") -> tuple[str, dict]:

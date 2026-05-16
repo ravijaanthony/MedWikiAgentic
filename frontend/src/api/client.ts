@@ -87,6 +87,54 @@ export async function createPatient(data: Omit<Patient, "patient_id"> & { patien
   return res.json();
 }
 
+export type TranscribeResult = {
+  transcript: string;
+  metadata: Record<string, unknown>;
+  source: "valsea" | "fixture" | string;
+  dialect?: string;
+};
+
+export async function transcribeAudio(
+  audio: File | Blob,
+  opts?: {
+    patientId?: string;
+    filename?: string;
+    durationSeconds?: number;
+    /** Demo fixture transcript when VALSEA unavailable (upload tab only) */
+    allowDemoFallback?: boolean;
+  }
+): Promise<TranscribeResult> {
+  const form = new FormData();
+  const file =
+    audio instanceof File
+      ? audio
+      : new File([audio], opts?.filename ?? "recording.webm", {
+          type: audio.type || "audio/webm",
+        });
+  form.append("audio", file);
+  if (opts?.patientId) form.append("patient_id", opts.patientId);
+  if (opts?.durationSeconds != null) {
+    form.append("duration_seconds", String(opts.durationSeconds));
+  }
+  if (opts?.allowDemoFallback) {
+    form.append("allow_demo_fallback", "true");
+  }
+
+  const res = await fetch(`${API_BASE}/transcribe`, { method: "POST", body: form });
+  if (!res.ok) {
+    let detail = "Transcription failed";
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      const text = await res.text().catch(() => "");
+      if (text) detail = text;
+    }
+    throw new Error(typeof detail === "string" ? detail : "Transcription failed");
+  }
+  return res.json();
+}
+
 export async function startConsultation(
   patientId: string,
   opts: { transcriptText?: string; useFixture?: boolean; audio?: File }
