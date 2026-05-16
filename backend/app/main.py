@@ -155,6 +155,7 @@ async def transcribe_consultation_audio(
             allow_fixture_fallback=allow_demo_fallback,
             filename=filename,
             content_type=content_type,
+            language=dialect,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

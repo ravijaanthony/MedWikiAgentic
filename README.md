@@ -17,8 +17,11 @@ Buildathon MVP: LangGraph pipeline with VALSEA ingest, LLM refinement (Gemini/Op
 cd backend
 python -m venv .venv
 .venv\Scripts\activate   # Windows
-pip install -e ".[dev]"
+source .venv/bin/activate # macOS
+pip install -e ".[dev]" # Windows
+python3 -m pip install -e '.[dev]' # macOS
 copy .env.example .env     # optional: set GEMINI_API_KEY and/or OPENAI_API_KEY
+cp .env.example .env    # macOS
 uvicorn app.main:app --reload --port 8000
 ```
 
