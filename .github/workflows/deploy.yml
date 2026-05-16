@@ -190,6 +190,20 @@ jobs:
           envs: GHCR_TOKEN,GHCR_ACTOR,GHCR_OWNER,IMAGE_TAG
           script: |
             set -euo pipefail
+            export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+
+            # ── 0. Ensure Docker + Compose are installed ─────────────────────
+            if ! command -v docker >/dev/null 2>&1; then
+              echo "Docker not found; installing..."
+              apt-get update -y
+              apt-get install -y docker.io docker-compose-plugin
+              systemctl enable --now docker
+            fi
+            if ! docker compose version >/dev/null 2>&1; then
+              echo "Docker Compose plugin not found; installing..."
+              apt-get update -y
+              apt-get install -y docker-compose-plugin
+            fi
 
             # ── 1. Authenticate with GHCR ──────────────────────────────────
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
