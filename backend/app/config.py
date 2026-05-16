@@ -1,4 +1,3 @@
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -13,8 +12,11 @@ _GLOBAL_ENV_FILE = _BACKEND_ROOT.parent / ".env"
 
 
 class Settings(BaseSettings):
+    # Always pass env_file — pydantic-settings tolerates a missing file.
+    # Do NOT gate on _ENV_FILE.exists(): that runs once at import time, so a
+    # .env created after first import would never be loaded.
     model_config = SettingsConfigDict(
-        env_file=str(_ENV_FILE) if _ENV_FILE.exists() else None,
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -78,8 +80,8 @@ class Settings(BaseSettings):
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
 
-@lru_cache
 def get_settings() -> Settings:
+    # Fresh read each call — edits to backend/.env apply without restarting.
     settings = Settings()
     if settings.valsea_api_key:
         return settings

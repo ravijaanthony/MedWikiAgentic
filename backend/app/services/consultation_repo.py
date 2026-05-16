@@ -31,7 +31,7 @@ def _connect() -> psycopg.Connection:
     url = get_settings().database_url
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
-    return psycopg.connect(url, row_factory=tuple_row)
+    return psycopg.connect(url, row_factory=tuple_row, connect_timeout=15)
 
 
 def init_consultations_db() -> None:

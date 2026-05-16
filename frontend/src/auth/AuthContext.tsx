@@ -1,4 +1,4 @@
-import type { Session, User } from "@supabase/supabase-js";
+import type { Provider, Session, User } from "@supabase/supabase-js";
 import {
   createContext,
   useCallback,
@@ -10,12 +10,15 @@ import {
 } from "react";
 import { supabase } from "../lib/supabase";
 
+const AUTH_CALLBACK_PATH = "/auth/callback";
+
 type AuthState = {
   user: User | null;
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<Session | null>;
+  signInWithOAuth: (provider: Provider) => Promise<void>;
   signOut: () => Promise<void>;
   authedFetch: (input: string, init?: RequestInit) => Promise<Response>;
   accessToken: () => string | null;
@@ -57,6 +60,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const signInWithOAuth = useCallback(async (provider: Provider) => {
+    const redirectTo = `${window.location.origin}${AUTH_CALLBACK_PATH}`;
+    console.info(`[SSO] Starting OAuth flow — provider=${provider} redirectTo=${redirectTo}`);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo },
+    });
+    if (error) {
+      console.error(`[SSO] supabase.auth.signInWithOAuth failed — provider=${provider}`, error);
+      throw error;
+    }
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -80,11 +96,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signUp,
+      signInWithOAuth,
       signOut,
       authedFetch,
       accessToken,
     }),
-    [session, loading, signIn, signUp, signOut, authedFetch, accessToken]
+    [session, loading, signIn, signUp, signInWithOAuth, signOut, authedFetch, accessToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

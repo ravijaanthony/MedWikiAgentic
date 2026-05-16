@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { createPatient, type Patient } from "../../api/client";
+import { upsertMe, type Patient } from "../../api/client";
 import ImmersiveShell from "../layout/ImmersiveShell";
 import { LINGUISTIC_OPTIONS, ONBOARDING_STEPS, type OnboardingStepId } from "./constants";
 import GenderSelector from "./GenderSelector";
@@ -97,14 +97,12 @@ export default function OnboardingWizard({ onPatientCreated }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const patient = await createPatient({
+      const patient = await upsertMe({
         display_name: form.display_name.trim(),
         allergies: parseListField(form.allergies),
         current_meds: parseListField(form.current_meds),
-        demographics: {
-          age: form.age ? parseInt(form.age, 10) : null,
-          sex: form.sex || null,
-        },
+        age: form.age ? parseInt(form.age, 10) : null,
+        sex: form.sex || null,
         linguistic_signature: form.linguistic_signature,
       });
       setCreatedPatient(patient);

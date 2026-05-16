@@ -50,13 +50,28 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup() -> None:
-    init_profiles_db()
-    init_consultations_db()
+    import logging
+    import threading
+    _log = logging.getLogger("uvicorn.error")
+
+    def _init_db_background() -> None:
+        try:
+            init_profiles_db()
+            init_consultations_db()
+            _log.info("MedWiki: Database tables initialised.")
+        except Exception as exc:
+            _log.warning(
+                "MedWiki: Database init failed (%s). "
+                "Set DATABASE_URL in backend/.env to a valid postgresql:// connection string. "
+                "Endpoints that require the DB will return 503 until this is fixed.",
+                exc,
+            )
+
+    threading.Thread(target=_init_db_background, daemon=True).start()
+
     provider = get_settings().llm_provider
     if provider == "none":
-        import logging
-
-        logging.getLogger("uvicorn.error").warning(
+        _log.warning(
             "MedWiki: No LLM API key configured (llm_provider=none). "
             "Refinement and agents use heuristics only. "
             "Create backend/.env from .env.example and set GEMINI_API_KEY or OPENAI_API_KEY."
@@ -97,7 +112,10 @@ def health() -> dict:
 
 @app.get("/me")
 def me_get(user_id: str = Depends(get_current_user_id)) -> dict:
-    profile = get_profile(user_id)
+    try:
+        profile = get_profile(user_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     return dump_model(profile)
@@ -108,15 +126,18 @@ def me_upsert(
     body: ProfileUpsertRequest,
     user_id: str = Depends(get_current_user_id),
 ) -> dict:
-    profile = create_or_update_profile(
-        user_id=user_id,
-        display_name=body.display_name,
-        allergies=body.allergies,
-        current_meds=body.current_meds,
-        age=body.age,
-        sex=body.sex,
-        linguistic_signature=body.linguistic_signature,
-    )
+    try:
+        profile = create_or_update_profile(
+            user_id=user_id,
+            display_name=body.display_name,
+            allergies=body.allergies,
+            current_meds=body.current_meds,
+            age=body.age,
+            sex=body.sex,
+            linguistic_signature=body.linguistic_signature,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database unavailable: {exc}") from exc
     return dump_model(profile)
 
 
