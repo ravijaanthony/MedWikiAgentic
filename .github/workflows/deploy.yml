@@ -203,12 +203,19 @@ jobs:
             fi
             if [ "$NEEDS_DOCKER" -eq 1 ] || [ "$NEEDS_COMPOSE" -eq 1 ]; then
               echo "Installing missing Docker components..."
+              if [ "$(id -u)" -ne 0 ]; then
+                echo "Docker installation requires root privileges."
+                exit 1
+              fi
+              echo "Updating package lists..."
               apt-get update -y
               if [ "$NEEDS_DOCKER" -eq 1 ]; then
+                echo "Installing Docker Engine..."
                 apt-get install -y docker.io
                 systemctl enable --now docker
               fi
               if [ "$NEEDS_COMPOSE" -eq 1 ]; then
+                echo "Installing Docker Compose plugin..."
                 apt-get install -y docker-compose-plugin
               fi
             fi
