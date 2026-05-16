@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from app.config import _ENV_FILE, get_settings
+from app.services.consultation_repo import (
+    get_consultation as get_consultation_record,
+    init_consultations_db,
+    list_consultations_for_patient,
+)
 from app.services.consultation_runner import run_consultation, store, stream_events
 from app.services.patient_context import (
     add_medication,
@@ -47,6 +52,7 @@ def _seed_demo_patient() -> None:
 @app.on_event("startup")
 def startup() -> None:
     init_db()
+    init_consultations_db()
     _seed_demo_patient()
     provider = get_settings().llm_provider
     if provider == "none":
@@ -159,13 +165,31 @@ async def consultations_create(
     return {"run_id": run_id, "status": "queued"}
 
 
+@app.get("/patients/{patient_id}/consultations")
+def patients_consultations(patient_id: str, limit: int = 20) -> list[dict]:
+    if not get_patient(patient_id):
+        raise HTTPException(status_code=404, detail="Patient not found")
+    return list_consultations_for_patient(patient_id, limit=limit)
+
+
 @app.get("/consultations/{run_id}")
 def consultations_get(run_id: str) -> dict:
     run = store.get(run_id)
-    if not run:
+    if run:
+        state = run.get("state", {})
+        return {
+            "run_id": run_id,
+            "status": run.get("status"),
+            "state": {k: v for k, v in state.items() if k != "audio_bytes"},
+        }
+    record = get_consultation_record(run_id)
+    if not record:
         raise HTTPException(status_code=404, detail="Run not found")
-    state = run.get("state", {})
-    return {"run_id": run_id, "status": run.get("status"), "state": {k: v for k, v in state.items() if k != "audio_bytes"}}
+    return {
+        "run_id": record["run_id"],
+        "status": record["status"],
+        "state": record["state"],
+    }
 
 
 @app.get("/consultations/{run_id}/events")

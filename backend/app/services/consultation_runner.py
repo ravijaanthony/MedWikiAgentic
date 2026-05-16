@@ -5,7 +5,8 @@ from typing import AsyncIterator
 from uuid import uuid4
 
 from app.graph.builder import get_graph
-from app.state.schemas import PipelineEvent
+from app.services import consultation_repo
+from app.state.schemas import PipelineEvent  # noqa: F401  (re-exported for callers)
 
 
 class ConsultationStore:
@@ -32,6 +33,11 @@ class ConsultationStore:
 store = ConsultationStore()
 
 
+def _patient_id_from_state(state: dict) -> str | None:
+    pc = state.get("patient_context") or {}
+    return pc.get("patient_id") if isinstance(pc, dict) else None
+
+
 async def run_consultation(initial_state: dict) -> dict:
     run_id = initial_state.get("run_id") or str(uuid4())
     initial_state["run_id"] = run_id
@@ -40,6 +46,16 @@ async def run_consultation(initial_state: dict) -> dict:
     initial_state.setdefault("events", [])
 
     store.set(run_id, {"status": "running", "state": initial_state})
+
+    patient_id = _patient_id_from_state(initial_state)
+    if patient_id:
+        consultation_repo.upsert_consultation(
+            run_id=run_id,
+            patient_id=patient_id,
+            status="running",
+            state=initial_state,
+            completed=False,
+        )
 
     graph = get_graph()
     final_state = dict(initial_state)
@@ -71,6 +87,14 @@ async def run_consultation(initial_state: dict) -> dict:
 
     final_state["status"] = "completed"
     store.set(run_id, {"status": "completed", "state": final_state})
+    if patient_id:
+        consultation_repo.upsert_consultation(
+            run_id=run_id,
+            patient_id=patient_id,
+            status="completed",
+            state=final_state,
+            completed=True,
+        )
     await store.publish(run_id, {"type": "complete", "state": _public_state(final_state)})
     return final_state
 

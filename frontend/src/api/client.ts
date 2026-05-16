@@ -155,3 +155,24 @@ export async function addMedication(patientId: string, medication: string): Prom
   if (!res.ok) throw new Error("Failed to update medications");
   return res.json();
 }
+
+export type ConsultationSummary = {
+  run_id: string;
+  status: string;
+  created_at: string | null;
+  completed_at: string | null;
+  integrity_passed: boolean | null;
+  warning_count: number;
+  transcript_preview: string;
+};
+
+export async function listPatientConsultations(
+  patientId: string,
+  limit = 10
+): Promise<ConsultationSummary[]> {
+  const res = await fetch(
+    `${API_BASE}/patients/${patientId}/consultations?limit=${limit}`
+  );
+  if (!res.ok) throw new Error("Failed to load consultation history");
+  return res.json();
+}

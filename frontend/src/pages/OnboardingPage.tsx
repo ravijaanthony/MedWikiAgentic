@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { createPatient, listPatients, type Patient } from "../api/client";
+import {
+  createPatient,
+  listPatientConsultations,
+  listPatients,
+  type ConsultationSummary,
+  type Patient,
+} from "../api/client";
 
 export default function OnboardingPage() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -132,19 +138,7 @@ export default function OnboardingPage() {
         <h2 className="text-lg font-semibold text-slate-800">Existing patients</h2>
         <ul className="mt-4 space-y-3">
           {patients.map((p) => (
-            <li key={p.patient_id} className="bg-white border border-slate-200 rounded-lg p-4">
-              <p className="font-medium">{p.display_name}</p>
-              <p className="text-xs text-slate-500 mt-1">ID: {p.patient_id.slice(0, 8)}…</p>
-              <p className="text-sm mt-2">
-                <span className="text-slate-500">Allergies:</span> {p.allergies.join(", ") || "none"}
-              </p>
-              <Link
-                to={`/consult?patient=${p.patient_id}`}
-                className="inline-block mt-3 text-sm text-clinical-700 font-medium hover:underline"
-              >
-                Start consultation →
-              </Link>
-            </li>
+            <PatientCard key={p.patient_id} patient={p} />
           ))}
           {!patients.length && (
             <p className="text-slate-400 text-sm">No patients yet. Demo patient seeds on API startup.</p>
@@ -167,4 +161,106 @@ function Field({ label, children, required }: { label: string; children: React.R
       <div className="mt-1">{children}</div>
     </label>
   );
+}
+
+function PatientCard({ patient }: { patient: Patient }) {
+  const [history, setHistory] = useState<ConsultationSummary[] | null>(null);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && history === null) {
+      setLoading(true);
+      try {
+        const items = await listPatientConsultations(patient.patient_id, 10);
+        setHistory(items);
+      } catch {
+        setHistory([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }
+
+  return (
+    <li className="bg-white border border-slate-200 rounded-lg p-4">
+      <p className="font-medium">{patient.display_name}</p>
+      <p className="text-xs text-slate-500 mt-1">ID: {patient.patient_id.slice(0, 8)}…</p>
+      <p className="text-sm mt-2">
+        <span className="text-slate-500">Allergies:</span> {patient.allergies.join(", ") || "none"}
+      </p>
+      <div className="mt-3 flex items-center gap-4">
+        <Link
+          to={`/consult?patient=${patient.patient_id}`}
+          className="text-sm text-clinical-700 font-medium hover:underline"
+        >
+          Start consultation →
+        </Link>
+        <button
+          type="button"
+          onClick={toggle}
+          className="text-sm text-slate-600 hover:text-clinical-700"
+        >
+          {open ? "Hide history" : "Show history"}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          {loading && <p className="text-xs text-slate-400">Loading…</p>}
+          {!loading && history && history.length === 0 && (
+            <p className="text-xs text-slate-400">No past consultations yet.</p>
+          )}
+          {!loading && history && history.length > 0 && (
+            <ul className="space-y-2">
+              {history.map((h) => (
+                <li key={h.run_id} className="text-sm flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-500">
+                        {h.created_at ? new Date(h.created_at).toLocaleString() : "—"}
+                      </span>
+                      <StatusPill status={h.status} />
+                      {h.warning_count > 0 && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                          {h.warning_count} warning{h.warning_count === 1 ? "" : "s"}
+                        </span>
+                      )}
+                      {h.integrity_passed === false && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                          integrity failed
+                        </span>
+                      )}
+                    </div>
+                    {h.transcript_preview && (
+                      <p className="text-xs text-slate-500 truncate mt-0.5">
+                        {h.transcript_preview}
+                      </p>
+                    )}
+                  </div>
+                  <Link
+                    to={`/results/${h.run_id}`}
+                    className="text-xs text-clinical-700 font-medium hover:underline shrink-0"
+                  >
+                    View →
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function StatusPill({ status }: { status: string }) {
+  const colour =
+    status === "completed"
+      ? "bg-emerald-100 text-emerald-800"
+      : status === "running"
+      ? "bg-blue-100 text-blue-800"
+      : "bg-slate-100 text-slate-700";
+  return <span className={`text-xs px-1.5 py-0.5 rounded ${colour}`}>{status}</span>;
 }
