@@ -204,19 +204,19 @@ jobs:
             if [ "$NEEDS_DOCKER" -eq 1 ] || [ "$NEEDS_COMPOSE" -eq 1 ]; then
               echo "Installing missing Docker components..."
               if [ "$(id -u)" -ne 0 ]; then
-                echo "Docker installation requires root privileges."
+                echo "Error: Docker installation requires root privileges. Ensure the deployment user has sudo access or run as root."
                 exit 1
               fi
               echo "Updating package lists..."
-              apt-get update -y
+              apt-get update -y || { echo "Failed to update package lists."; exit 1; }
               if [ "$NEEDS_DOCKER" -eq 1 ]; then
-                echo "Installing Docker Engine..."
-                apt-get install -y docker.io
-                systemctl enable --now docker
+                echo "Installing Docker Engine (docker.io from distro repositories)..."
+                apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
+                systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
               fi
               if [ "$NEEDS_COMPOSE" -eq 1 ]; then
                 echo "Installing Docker Compose plugin..."
-                apt-get install -y docker-compose-plugin
+                apt-get install -y docker-compose-plugin || { echo "Failed to install docker-compose-plugin. Ensure the package is available in your repositories."; exit 1; }
               fi
             fi
 
