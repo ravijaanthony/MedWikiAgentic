@@ -60,7 +60,6 @@ def create_patient(
     sex: str | None,
     linguistic_signature: str,
 ) -> PatientContext:
-    init_db()
     patient_id = str(uuid4())
     demo = Demographics(age=age, sex=sex)
     ctx = PatientContext(
@@ -91,7 +90,6 @@ def create_patient(
 
 
 def get_patient(patient_id: str) -> PatientContext | None:
-    init_db()
     with _connect() as conn:
         row = conn.execute(
             """
@@ -106,7 +104,6 @@ def get_patient(patient_id: str) -> PatientContext | None:
 
 
 def list_patients() -> list[PatientContext]:
-    init_db()
     with _connect() as conn:
         rows = conn.execute(
             """
