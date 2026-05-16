@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes, useLocation, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation} from "react-router-dom";
 import type { ReactNode } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ConsultPage from "./pages/ConsultPage";
