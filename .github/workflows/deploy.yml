@@ -193,16 +193,24 @@ jobs:
             export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
             # ── 0. Ensure Docker + Compose are installed ─────────────────────
+            NEEDS_DOCKER=0
+            NEEDS_COMPOSE=0
             if ! command -v docker >/dev/null 2>&1; then
-              echo "Docker not found; installing..."
-              apt-get update -y
-              apt-get install -y docker.io docker-compose-plugin
-              systemctl enable --now docker
+              NEEDS_DOCKER=1
+              NEEDS_COMPOSE=1
+            elif ! docker compose version >/dev/null 2>&1; then
+              NEEDS_COMPOSE=1
             fi
-            if ! docker compose version >/dev/null 2>&1; then
-              echo "Docker Compose plugin not found; installing..."
+            if [ "$NEEDS_DOCKER" -eq 1 ] || [ "$NEEDS_COMPOSE" -eq 1 ]; then
+              echo "Installing missing Docker components..."
               apt-get update -y
-              apt-get install -y docker-compose-plugin
+              if [ "$NEEDS_DOCKER" -eq 1 ]; then
+                apt-get install -y docker.io
+                systemctl enable --now docker
+              fi
+              if [ "$NEEDS_COMPOSE" -eq 1 ]; then
+                apt-get install -y docker-compose-plugin
+              fi
             fi
 
             # ── 1. Authenticate with GHCR ──────────────────────────────────
