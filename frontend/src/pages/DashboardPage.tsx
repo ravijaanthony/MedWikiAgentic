@@ -15,11 +15,18 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
 
-  async function refresh() {
+  async function refresh(allowRetry = false) {
     setLoading(true);
     setError(null);
     try {
-      const me = await getMe();
+      let me = await getMe();
+      if (!me && allowRetry) {
+        // First-mount fallback: the just-completed signup may have left a
+        // POST /me request in flight that hasn't reflected yet. Try once more
+        // before falling through to the "Complete your profile" form.
+        await new Promise((r) => setTimeout(r, 500));
+        me = await getMe();
+      }
       setProfile(me);
       if (me) {
         const items = await listMyConsultations(20);
@@ -33,7 +40,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    refresh();
+    refresh(true);
   }, []);
 
   if (loading) {

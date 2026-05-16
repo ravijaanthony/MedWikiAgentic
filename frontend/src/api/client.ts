@@ -88,11 +88,23 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`${API_BASE}${path}`, { ...init, headers });
 }
 
+async function unwrap<T>(res: Response, fallback: string): Promise<T> {
+  if (res.ok) return (await res.json()) as T;
+  let detail: string | undefined;
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === "string") detail = body.detail;
+    else if (Array.isArray(body?.detail)) detail = body.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join("; ");
+  } catch {
+    // non-JSON body, ignore
+  }
+  throw new Error(detail ? `${fallback}: ${detail}` : fallback);
+}
+
 export async function getMe(): Promise<Patient | null> {
   const res = await api("/me");
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error("Failed to load profile");
-  return res.json();
+  return unwrap<Patient>(res, "Failed to load profile");
 }
 
 export async function upsertMe(payload: ProfileUpsertPayload): Promise<Patient> {
@@ -101,8 +113,7 @@ export async function upsertMe(payload: ProfileUpsertPayload): Promise<Patient> 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to save profile");
-  return res.json();
+  return unwrap<Patient>(res, "Failed to save profile");
 }
 
 export async function addMyMedication(medication: string): Promise<Patient> {
@@ -111,8 +122,7 @@ export async function addMyMedication(medication: string): Promise<Patient> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ medication }),
   });
-  if (!res.ok) throw new Error("Failed to update medications");
-  return res.json();
+  return unwrap<Patient>(res, "Failed to update medications");
 }
 
 export async function startConsultation(opts: {
@@ -126,16 +136,14 @@ export async function startConsultation(opts: {
   if (opts.audio) form.append("audio", opts.audio);
 
   const res = await api("/consultations", { method: "POST", body: form });
-  if (!res.ok) throw new Error("Failed to start consultation");
-  return res.json();
+  return unwrap<{ run_id: string }>(res, "Failed to start consultation");
 }
 
 export async function getConsultation(
   runId: string
 ): Promise<{ status: string; state: ConsultationState }> {
   const res = await api(`/consultations/${runId}`);
-  if (!res.ok) throw new Error("Failed to fetch consultation");
-  return res.json();
+  return unwrap<{ status: string; state: ConsultationState }>(res, "Failed to fetch consultation");
 }
 
 export async function subscribeConsultation(
@@ -193,6 +201,5 @@ export type ConsultationSummary = {
 
 export async function listMyConsultations(limit = 20): Promise<ConsultationSummary[]> {
   const res = await api(`/me/consultations?limit=${limit}`);
-  if (!res.ok) throw new Error("Failed to load consultation history");
-  return res.json();
+  return unwrap<ConsultationSummary[]>(res, "Failed to load consultation history");
 }

@@ -3,6 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import { upsertMe } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 
+type Stage = "idle" | "creating-account" | "saving-profile" | "done";
+
+const EMAIL_CONFIRM_HINT =
+  "Account created, but Supabase didn't return a session — Email Confirmation is " +
+  "probably enabled. Disable it in Supabase Dashboard -> Authentication -> Settings -> " +
+  "Confirm email, then click 'Create account' again. (Existing email confirmations don't " +
+  "need to be re-sent — the user record already exists.)";
+
 export default function SignupPage() {
   const navigate = useNavigate();
   const { signUp } = useAuth();
@@ -16,35 +24,61 @@ export default function SignupPage() {
     sex: "",
     linguistic_signature: "Singlish",
   });
-  const [loading, setLoading] = useState(false);
+  const [stage, setStage] = useState<Stage>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+
+  const busy = stage === "creating-account" || stage === "saving-profile";
+
+  function profilePayload() {
+    return {
+      display_name: form.display_name,
+      allergies: form.allergies.split(",").map((s) => s.trim()).filter(Boolean),
+      current_meds: form.current_meds.split(",").map((s) => s.trim()).filter(Boolean),
+      age: form.age ? parseInt(form.age, 10) : null,
+      sex: form.sex || null,
+      linguistic_signature: form.linguistic_signature,
+    };
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
+    setWarning(null);
+
+    setStage("creating-account");
+    let session;
     try {
-      const session = await signUp(form.email, form.password);
-      if (!session) {
-        setError(
-          "Account created — check your inbox to confirm. Once confirmed, sign in to finish setup."
-        );
-        return;
-      }
-      await upsertMe({
-        display_name: form.display_name,
-        allergies: form.allergies.split(",").map((s) => s.trim()).filter(Boolean),
-        current_meds: form.current_meds.split(",").map((s) => s.trim()).filter(Boolean),
-        age: form.age ? parseInt(form.age, 10) : null,
-        sex: form.sex || null,
-        linguistic_signature: form.linguistic_signature,
-      });
-      navigate("/dashboard", { replace: true });
+      session = await signUp(form.email, form.password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign-up failed");
-    } finally {
-      setLoading(false);
+      setStage("idle");
+      return;
     }
+
+    if (!session) {
+      // Email confirmation enabled in Supabase — auth user exists but no session
+      // means we cannot call POST /me yet. Stop here with explicit instructions.
+      setError(EMAIL_CONFIRM_HINT);
+      setStage("idle");
+      return;
+    }
+
+    setStage("saving-profile");
+    try {
+      await upsertMe(profilePayload());
+    } catch (err) {
+      // Auth user is created and we have a session; profile save failed. Send
+      // the user to the dashboard, where the profile editor renders as the
+      // recovery path. They keep their session so re-saving Just Works.
+      setWarning(
+        `Profile save failed (${err instanceof Error ? err.message : String(err)}). ` +
+          `Continuing to the dashboard — finish your profile there.`
+      );
+    }
+
+    setStage("done");
+    navigate("/dashboard", { replace: true });
   }
 
   return (
@@ -139,13 +173,18 @@ export default function SignupPage() {
           </select>
         </Field>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-600 whitespace-pre-line">{error}</p>}
+        {warning && <p className="text-sm text-amber-700 whitespace-pre-line">{warning}</p>}
         <button
           type="submit"
-          disabled={loading}
+          disabled={busy}
           className="w-full py-2.5 rounded-lg bg-clinical-700 text-white font-medium hover:bg-clinical-900 disabled:opacity-50"
         >
-          {loading ? "Creating account…" : "Create account"}
+          {stage === "creating-account"
+            ? "Creating account…"
+            : stage === "saving-profile"
+            ? "Saving profile…"
+            : "Create account"}
         </button>
       </form>
 

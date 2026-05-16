@@ -14,8 +14,8 @@ export default function App() {
         <AppHeader />
         <main className="max-w-6xl mx-auto px-4 py-8">
           <Routes>
-            <Route path="/login" element={<RedirectIfAuthed><LoginPage /></RedirectIfAuthed>} />
-            <Route path="/signup" element={<RedirectIfAuthed><SignupPage /></RedirectIfAuthed>} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
             <Route
               path="/dashboard"
               element={
@@ -106,13 +106,6 @@ function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (loading) return <p className="text-slate-500">Loading…</p>;
   if (!user) return <Navigate to="/login" state={{ from: location.pathname }} replace />;
-  return <>{children}</>;
-}
-
-function RedirectIfAuthed({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
-  if (loading) return null;
-  if (user) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
