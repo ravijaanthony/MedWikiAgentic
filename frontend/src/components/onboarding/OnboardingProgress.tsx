@@ -22,7 +22,7 @@ export default function OnboardingProgress({
         aria-valuenow={progressPercent}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={`${progressPercent} percent complete`}
+        aria-label="Onboarding progress"
       >
         <div
           className="h-full rounded-full bg-clinical-600 transition-all duration-500 ease-out"

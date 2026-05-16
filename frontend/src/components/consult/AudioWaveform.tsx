@@ -5,9 +5,10 @@ import { useAudioAnalyserCanvas } from "../../hooks/useAudioAnalyser";
 type Props = {
   analyser: AnalyserNode | null;
   status: RecorderStatus;
+  embedded?: boolean;
 };
 
-export default function AudioWaveform({ analyser, status }: Props) {
+export default function AudioWaveform({ analyser, status, embedded = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useAudioAnalyserCanvas(canvasRef, analyser, {
@@ -29,7 +30,9 @@ export default function AudioWaveform({ analyser, status }: Props) {
     <div className="relative w-full">
       <canvas
         ref={canvasRef}
-        className="h-44 w-full rounded-2xl border border-clinical-200/80 bg-clinical-50/30 shadow-inner sm:h-48"
+        className={`h-44 w-full border border-clinical-200/80 bg-clinical-50/30 shadow-inner sm:h-48 ${
+          embedded ? "rounded-none border-x-0 border-t-0" : "rounded-2xl"
+        }`}
         role="img"
         aria-label={`Recording timeline waveform, ${statusLabel}`}
       />

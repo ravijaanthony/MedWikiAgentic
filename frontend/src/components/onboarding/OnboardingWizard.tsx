@@ -124,14 +124,8 @@ export default function OnboardingWizard({ onPatientCreated }: Props) {
     );
   }
 
-  const stepLabel = `${stepIndex + 1} / ${ONBOARDING_STEPS.length}`;
-
   return (
-    <ImmersiveShell
-      trailing={
-        <span className="text-sm font-medium tabular-nums text-slate-500">{stepLabel}</span>
-      }
-    >
+    <ImmersiveShell>
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <OnboardingProgress currentStepId={stepId} className="w-full" variant="minimal" />
 

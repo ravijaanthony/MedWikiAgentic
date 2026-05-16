@@ -6,9 +6,16 @@ type Props = {
   onRecordingReady: (blob: Blob, durationSec: number) => void;
   onRecordingStart?: () => void;
   disabled?: boolean;
+  /** When true, omits outer card chrome (used inside AudioInputPanel). */
+  embedded?: boolean;
 };
 
-export default function LiveRecorder({ onRecordingReady, onRecordingStart, disabled }: Props) {
+export default function LiveRecorder({
+  onRecordingReady,
+  onRecordingStart,
+  disabled,
+  embedded = false,
+}: Props) {
   const {
     status,
     durationSec,
@@ -50,9 +57,13 @@ export default function LiveRecorder({ onRecordingReady, onRecordingStart, disab
           ? "Recording is paused. Resume or stop when ready."
           : "Recording saved. Transcribing next…";
 
+  const shellClass = embedded
+    ? ""
+    : "overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/80";
+
   return (
-    <div className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-slate-200/80">
-      <AudioWaveform analyser={analyser} status={status} />
+    <div className={shellClass}>
+      <AudioWaveform analyser={analyser} status={status} embedded={embedded} />
 
       <div className="border-t border-slate-100 px-5 py-5 sm:px-6">
         <div className="flex flex-col items-center text-center">

@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   listPatients,
   startConsultation,
   transcribeAudio,
   type Patient,
 } from "../api/client";
-import AudioUploadZone from "../components/consult/AudioUploadZone";
-import LiveRecorder from "../components/consult/LiveRecorder";
+import AudioInputPanel, { type AudioInputMethod } from "../components/consult/AudioInputPanel";
 import TranscriptEditor from "../components/consult/TranscriptEditor";
 import ImmersiveShell from "../components/layout/ImmersiveShell";
 import { canTranscribeRecording } from "../utils/audioRecording";
@@ -15,22 +14,16 @@ import { canTranscribeRecording } from "../utils/audioRecording";
 const FIXTURE_HINT =
   "A quick demo visit in Singlish—including a penicillin allergy and an amoxicillin prescription—so you can see how safety alerts work.";
 
-type CaptureMode = "text" | "upload" | "record" | "fixture";
-
-type LocationState = {
-  fromOnboarding?: boolean;
-  patientName?: string;
-};
+type CaptureMode = "audio" | "fixture";
 
 export default function ConsultPage() {
   const [search] = useSearchParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const locState = (location.state as LocationState | null) ?? {};
 
   const [patients, setPatients] = useState<Patient[]>([]);
   const [patientId, setPatientId] = useState(search.get("patient") || "");
-  const [mode, setMode] = useState<CaptureMode>("record");
+  const [mode, setMode] = useState<CaptureMode>("audio");
+  const [audioMethod, setAudioMethod] = useState<AudioInputMethod>("record");
   const [transcript, setTranscript] = useState("");
   const [transcriptSource, setTranscriptSource] = useState<string | undefined>();
   const [transcribing, setTranscribing] = useState(false);
@@ -125,6 +118,13 @@ export default function ConsultPage() {
     [transcribeFromAudio]
   );
 
+  const handleUploadClear = useCallback(() => {
+    setUploadFileName(null);
+    clearTranscript();
+    transcribeRequestRef.current += 1;
+    setTranscribing(false);
+  }, [clearTranscript]);
+
   const handleRecordingStart = useCallback(() => {
     transcribeRequestRef.current += 1;
     clearTranscript();
@@ -144,16 +144,15 @@ export default function ConsultPage() {
 
   const showTranscriptSection = mode !== "fixture";
   const transcriptVisible =
-    mode === "text" ||
     transcribing ||
     !!transcript.trim() ||
-    (mode === "record" && !transcribing);
+    (mode === "audio" && audioMethod === "record" && !transcribing);
 
   const transcriptEmptyHint =
-    mode === "record"
-      ? "Your transcript will appear here after you stop recording. Nothing is sent until you finish."
-      : mode === "upload"
-        ? "Upload audio above to generate a transcript with VALSEA."
+    mode === "audio" && audioMethod === "upload"
+      ? "Upload audio above to generate a transcript with VALSEA."
+      : mode === "audio"
+        ? "Your transcript will appear here after you stop recording. Nothing is sent until you finish."
         : undefined;
 
   async function handleStart() {
@@ -201,14 +200,10 @@ export default function ConsultPage() {
     setError(null);
     transcribeRequestRef.current += 1;
     setTranscribing(false);
-    if (next === "record") {
+    if (next === "audio") {
+      setAudioMethod("record");
       clearTranscript();
       setUploadFileName(null);
-    } else if (next === "text") {
-      setTranscriptSource(undefined);
-      setUploadFileName(null);
-    } else if (next === "upload") {
-      clearTranscript();
     } else if (next === "fixture") {
       clearTranscript();
       setUploadFileName(null);
@@ -227,28 +222,17 @@ export default function ConsultPage() {
     >
       <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col">
         <header className="immersive-step-enter pt-4 sm:pt-8">
-          {locState.fromOnboarding && (
-            <p className="text-sm font-semibold uppercase tracking-wider text-clinical-700">
-              Step 2 · Your consultation
-            </p>
-          )}
           <h1
             data-step-focus
             tabIndex={-1}
-            className="mt-2 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
+            className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl"
           >
-            {mode === "text" && "Paste your visit notes"}
-            {mode === "upload" && "Upload visit audio"}
-            {mode === "record" && "Record your visit"}
+            {mode === "audio" && "Capture your visit audio"}
             {mode === "fixture" && "Try the demo visit"}
           </h1>
           <p className="mt-3 text-lg leading-relaxed text-slate-600">
-            {mode === "text" &&
-              "Type or paste what was discussed—we'll process it through the same safety-aware pipeline."}
-            {mode === "upload" &&
-              "Upload a recording and we'll transcribe it with VALSEA. You can edit the transcript before continuing."}
-            {mode === "record" &&
-              "Use your microphone to capture the visit. We'll transcribe with VALSEA only after you stop—never while you're still recording."}
+            {mode === "audio" &&
+              "Record live with your microphone, or upload an existing file. We'll transcribe with VALSEA after you finish—never while you're still recording."}
             {mode === "fixture" &&
               "Experience MedWiki instantly with a sample Singlish consultation—no audio needed."}
           </p>
@@ -271,15 +255,13 @@ export default function ConsultPage() {
           </label>
         )}
 
-        <div className="mt-8 flex flex-wrap gap-2" role="tablist" aria-label="Input method">
-          <ModeTab active={mode === "text"} onClick={() => switchMode("text")}>
-            Paste
-          </ModeTab>
-          <ModeTab active={mode === "upload"} onClick={() => switchMode("upload")}>
-            Upload
-          </ModeTab>
-          <ModeTab active={mode === "record"} onClick={() => switchMode("record")}>
-            Record
+        <div
+          className="mt-8 flex flex-wrap justify-center gap-2"
+          role="tablist"
+          aria-label="Input method"
+        >
+          <ModeTab active={mode === "audio"} onClick={() => switchMode("audio")}>
+            Audio
           </ModeTab>
           <ModeTab active={mode === "fixture"} onClick={() => switchMode("fixture")}>
             Demo
@@ -287,30 +269,14 @@ export default function ConsultPage() {
         </div>
 
         <div key={mode} className="immersive-step-enter mt-6">
-          {mode === "text" && (
-            <p className="rounded-2xl bg-white px-5 py-4 text-sm text-slate-600 shadow-card">
-              Paste or type your visit notes in the transcript box below. You can edit them anytime
-              before starting your consultation.
-            </p>
-          )}
-
-          {mode === "upload" && (
-            <AudioUploadZone
+          {mode === "audio" && (
+            <AudioInputPanel
               disabled={transcribing || loading}
-              fileName={transcribing ? uploadFileName : null}
-              onFileSelected={handleUploadFile}
-              onClear={() => {
-                setUploadFileName(null);
-                clearTranscript();
-                transcribeRequestRef.current += 1;
-                setTranscribing(false);
-              }}
-            />
-          )}
-
-          {mode === "record" && (
-            <LiveRecorder
-              disabled={transcribing || loading}
+              transcribing={transcribing}
+              uploadFileName={uploadFileName}
+              onInputMethodChange={setAudioMethod}
+              onUploadFile={handleUploadFile}
+              onUploadClear={handleUploadClear}
               onRecordingStart={handleRecordingStart}
               onRecordingReady={handleRecordingReady}
             />
@@ -329,10 +295,7 @@ export default function ConsultPage() {
         {showTranscriptSection && (
           <TranscriptEditor
             value={transcript}
-            onChange={(v) => {
-              setTranscript(v);
-              if (mode === "text") setTranscriptSource(undefined);
-            }}
+            onChange={setTranscript}
             sourceLabel={transcriptSource}
             loading={transcribing}
             emptyHint={transcriptEmptyHint}

@@ -5,9 +5,17 @@ type Props = {
   disabled?: boolean;
   fileName?: string | null;
   onClear?: () => void;
+  /** When true, fits inside AudioInputPanel without duplicate card styling. */
+  embedded?: boolean;
 };
 
-export default function AudioUploadZone({ onFileSelected, disabled, fileName, onClear }: Props) {
+export default function AudioUploadZone({
+  onFileSelected,
+  disabled,
+  fileName,
+  onClear,
+  embedded = false,
+}: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -16,15 +24,25 @@ export default function AudioUploadZone({ onFileSelected, disabled, fileName, on
     onFileSelected(file);
   }
 
-  return (
-    <div
-      className={`flex min-h-[200px] flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+  const zoneClass = embedded
+    ? `flex min-h-[180px] flex-col items-center justify-center rounded-xl border-2 border-dashed px-5 py-8 text-center transition-colors ${
+        dragOver
+          ? "border-clinical-500 bg-clinical-50/50"
+          : fileName
+            ? "border-clinical-400 bg-clinical-50/30"
+            : "border-slate-200 bg-slate-50/50"
+      }`
+    : `flex min-h-[200px] flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
         dragOver
           ? "border-clinical-500 bg-clinical-50/50"
           : fileName
             ? "border-clinical-400 bg-clinical-50/30"
             : "border-slate-200 bg-white shadow-card"
-      }`}
+      }`;
+
+  return (
+    <div
+      className={zoneClass}
       onDragOver={(e) => {
         e.preventDefault();
         if (!disabled) setDragOver(true);
@@ -63,11 +81,11 @@ export default function AudioUploadZone({ onFileSelected, disabled, fileName, on
           <p className="mt-1 text-sm text-slate-500">WAV, MP3, M4A, WebM — transcribed via VALSEA</p>
           <button
             type="button"
-            className="btn-secondary mt-6"
+            className={embedded ? "btn-ghost mt-5 text-clinical-700" : "btn-secondary mt-6"}
             disabled={disabled}
             onClick={() => fileInputRef.current?.click()}
           >
-            Choose file
+            {embedded ? "Browse for audio file" : "Choose file"}
           </button>
         </>
       )}
