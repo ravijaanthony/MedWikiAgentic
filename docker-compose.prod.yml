@@ -20,6 +20,9 @@
 #                     mkdir -p /opt/medwiki/backend
 #                     nano /opt/medwiki/backend/.env
 #
+# Production URL (frontend on port 80): http://167.71.21.93
+# Health check: http://167.71.21.93/api/health
+#
 # Usage on Droplet (the workflow runs this automatically):
 #   export GHCR_OWNER=<owner> IMAGE_TAG=<sha>
 #   docker compose -f docker-compose.prod.yml pull

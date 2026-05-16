@@ -13,7 +13,7 @@
 #   5. Cleans up dangling images.
 #
 # ── Required GitHub Secrets ─────────────────────────────────────────────────
-#   DROPLET_HOST         Public IP or hostname of the Droplet
+#   DROPLET_HOST         Public IP or hostname of the Droplet (e.g. 167.71.21.93)
 #   DROPLET_USER         SSH user on the Droplet (e.g. root or deploy)
 #   DROPLET_SSH_KEY      Private key whose public half is in
 #                        ~/.ssh/authorized_keys on the Droplet
@@ -156,6 +156,9 @@ jobs:
     name: Deploy to Droplet
     runs-on: ubuntu-latest
     needs: [build-backend, build-frontend]
+    permissions:
+      contents: read
+      packages: read   # GITHUB_TOKEN must read GHCR when the Droplet pulls images
     environment:
       name: production
       url: http://${{ secrets.DROPLET_HOST }}
