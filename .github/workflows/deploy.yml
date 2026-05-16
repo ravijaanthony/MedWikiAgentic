@@ -193,11 +193,11 @@ jobs:
             export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
             # ── 0. Ensure Docker + Compose are installed ─────────────────────
-            NEEDS_DOCKER=0
-            NEEDS_COMPOSE=0
+            INSTALL_DOCKER=0
+            INSTALL_COMPOSE=0
             if ! command -v docker >/dev/null 2>&1; then
-              NEEDS_DOCKER=1
-              NEEDS_COMPOSE=1
+              INSTALL_DOCKER=1
+              INSTALL_COMPOSE=1
             else
               HAS_COMPOSE=0
               if docker compose version --short >/dev/null 2>&1; then
@@ -211,10 +211,10 @@ jobs:
                 done
               fi
               if [ "$HAS_COMPOSE" -ne 1 ]; then
-                NEEDS_COMPOSE=1
+                INSTALL_COMPOSE=1
               fi
             fi
-            if [ "$NEEDS_DOCKER" -eq 1 ] || [ "$NEEDS_COMPOSE" -eq 1 ]; then
+            if [ "$INSTALL_DOCKER" -eq 1 ] || [ "$INSTALL_COMPOSE" -eq 1 ]; then
               echo "Installing missing Docker components..."
               SUDO=""
               if [ "$(id -u)" -ne 0 ]; then
@@ -225,14 +225,19 @@ jobs:
                   exit 1
                 fi
               fi
+              if ! command -v apt-get >/dev/null 2>&1; then
+                echo "Error: apt-get is required to install Docker on this host."
+                exit 1
+              fi
               echo "Updating package lists..."
               $SUDO apt-get update -y || { echo "Failed to update package lists."; exit 1; }
-              if [ "$NEEDS_DOCKER" -eq 1 ]; then
-                echo "Installing Docker Engine (docker.io from distro repositories; use Docker CE repo for newer versions)..."
+              if [ "$INSTALL_DOCKER" -eq 1 ]; then
+                echo "Installing Docker Engine (docker.io from distro repositories)."
+                echo "For Docker CE packages, see: https://docs.docker.com/engine/install/ubuntu/"
                 $SUDO apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
                 $SUDO systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
               fi
-              if [ "$NEEDS_COMPOSE" -eq 1 ]; then
+              if [ "$INSTALL_COMPOSE" -eq 1 ]; then
                 echo "Installing Docker Compose plugin..."
                 if ! $SUDO apt-get install -y docker-compose-plugin; then
                   echo "Failed to install docker-compose-plugin."
