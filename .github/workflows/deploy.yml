@@ -200,7 +200,7 @@ jobs:
               NEEDS_COMPOSE_INSTALL=true
             else
               COMPOSE_FOUND=false
-              if docker compose version --short >/dev/null 2>&1; then
+              if docker compose version >/dev/null 2>&1; then
                 COMPOSE_FOUND=true
               else
                 for path in /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose; do
@@ -227,6 +227,7 @@ jobs:
               fi
               if ! command -v apt-get >/dev/null 2>&1; then
                 echo "Error: apt-get is required to install Docker on this host."
+                echo "This workflow expects a Debian/Ubuntu host or Docker preinstalled."
                 exit 1
               fi
               echo "Updating package lists..."
