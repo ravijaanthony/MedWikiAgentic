@@ -1,22 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getSupabase, isSupabaseConfigured } from "../lib/supabaseClient";
+import { supabase } from "../lib/supabase";
 
 export default function AuthCallbackPage() {
   const navigate = useNavigate();
   const [message, setMessage] = useState("Completing sign-in…");
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      setMessage("Supabase is not configured.");
-      return;
-    }
-
-    const supabase = getSupabase();
     let cancelled = false;
 
     const finish = () => {
-      if (!cancelled) navigate("/", { replace: true });
+      if (!cancelled) navigate("/dashboard", { replace: true });
     };
 
     const {

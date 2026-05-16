@@ -3,23 +3,40 @@ from __future__ import annotations
 import json
 from typing import Annotated
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from app.auth import get_current_user_id, verify_token
+from app.clients.valsea import transcribe_audio
 from app.config import _ENV_FILE, get_settings
+from app.services.consultation_repo import (
+    get_consultation as get_consultation_record,
+    init_consultations_db,
+    list_consultations_for_user,
+)
+from app.utils.audio_validation import validate_audio_payload
+from app.utils.warnings import dedupe_warnings
 from app.services.consultation_runner import run_consultation, store, stream_events
-from app.services.patient_context import (
+from app.services.user_profile import (
     add_medication,
-    create_patient,
-    get_patient,
-    init_db,
-    list_patients,
+    create_or_update_profile,
+    get_profile,
+    init_db as init_profiles_db,
 )
 from app.state.schemas import dump_model
 
-app = FastAPI(title="MedWiki API", version="0.1.0")
+app = FastAPI(title="MedWiki API", version="0.2.0")
 
 settings = get_settings()
 app.add_middleware(
@@ -31,23 +48,10 @@ app.add_middleware(
 )
 
 
-def _seed_demo_patient() -> None:
-    if list_patients():
-        return
-    create_patient(
-        display_name="Mr Tan (Demo)",
-        allergies=["penicillin"],
-        current_meds=["Metformin 500mg"],
-        age=58,
-        sex="M",
-        linguistic_signature="Singlish",
-    )
-
-
 @app.on_event("startup")
 def startup() -> None:
-    init_db()
-    _seed_demo_patient()
+    init_profiles_db()
+    init_consultations_db()
     provider = get_settings().llm_provider
     if provider == "none":
         import logging
@@ -59,13 +63,13 @@ def startup() -> None:
         )
 
 
-class PatientCreateRequest(BaseModel):
+class ProfileUpsertRequest(BaseModel):
     display_name: str
     allergies: list[str] = Field(default_factory=list)
     current_meds: list[str] = Field(default_factory=list)
     age: int | None = None
     sex: str | None = None
-    linguistic_signature: str = "Singlish"
+    linguistic_signature: str = "English"
 
 
 class AcknowledgeWarningsRequest(BaseModel):
@@ -78,24 +82,34 @@ class AddMedicationRequest(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
-    settings = get_settings()
+    s = get_settings()
     return {
         "status": "ok",
         "service": "medwiki",
-        "llm_provider": settings.llm_provider,
-        "llm_configured": settings.llm_provider != "none",
+        "llm_provider": s.llm_provider,
+        "llm_configured": s.llm_provider != "none",
         "env_file_loaded": _ENV_FILE.exists(),
     }
 
 
-@app.get("/patients")
-def patients_list() -> list[dict]:
-    return [dump_model(p) for p in list_patients()]
+# --- Profile (the authenticated user) -----------------------------------------
 
 
-@app.post("/patients")
-def patients_create(body: PatientCreateRequest) -> dict:
-    patient = create_patient(
+@app.get("/me")
+def me_get(user_id: str = Depends(get_current_user_id)) -> dict:
+    profile = get_profile(user_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return dump_model(profile)
+
+
+@app.post("/me")
+def me_upsert(
+    body: ProfileUpsertRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    profile = create_or_update_profile(
+        user_id=user_id,
         display_name=body.display_name,
         allergies=body.allergies,
         current_meds=body.current_meds,
@@ -103,36 +117,89 @@ def patients_create(body: PatientCreateRequest) -> dict:
         sex=body.sex,
         linguistic_signature=body.linguistic_signature,
     )
-    return dump_model(patient)
+    return dump_model(profile)
 
 
-@app.get("/patients/{patient_id}")
-def patients_get(patient_id: str) -> dict:
-    patient = get_patient(patient_id)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    return dump_model(patient)
+@app.post("/me/medications")
+def me_add_medication(
+    body: AddMedicationRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    profile = add_medication(user_id, body.medication)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return dump_model(profile)
 
 
-@app.post("/patients/{patient_id}/medications")
-def patients_add_med(patient_id: str, body: AddMedicationRequest) -> dict:
-    patient = add_medication(patient_id, body.medication)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    return dump_model(patient)
+@app.get("/me/consultations")
+def me_consultations(
+    user_id: str = Depends(get_current_user_id),
+    limit: int = 20,
+) -> list[dict]:
+    return list_consultations_for_user(user_id, limit=limit)
+
+
+# --- Consultations ------------------------------------------------------------
+
+
+@app.post("/transcribe")
+async def transcribe_consultation_audio(
+    audio: UploadFile = File(...),
+    patient_id: Annotated[str | None, Form()] = None,
+    duration_seconds: Annotated[float | None, Form()] = None,
+    allow_demo_fallback: Annotated[bool, Form()] = False,
+) -> dict:
+    """Transcribe audio via VALSEA. Rejects empty/silent clips; demo fallback only when opted in."""
+    settings = get_settings()
+    audio_bytes = await audio.read()
+    try:
+        validate_audio_payload(audio_bytes, duration_seconds=duration_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dialect = "English"
+    if patient_id:
+        patient = get_patient(patient_id)
+        if patient:
+            dialect = patient.linguistic_signature
+
+    filename = audio.filename or "consultation.webm"
+    content_type = audio.content_type or "audio/webm"
+    try:
+        raw, meta = await transcribe_audio(
+            audio_bytes,
+            use_fixture=False,
+            allow_fixture_fallback=allow_demo_fallback,
+            filename=filename,
+            content_type=content_type,
+            language=dialect,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    source = "valsea" if settings.valsea_api_key else "fixture"
+    return {
+        "transcript": raw,
+        "metadata": meta,
+        "source": source,
+        "dialect": dialect,
+    }
 
 
 @app.post("/consultations")
 async def consultations_create(
     background_tasks: BackgroundTasks,
-    patient_id: Annotated[str, Form(...)],
+    user_id: Annotated[str, Depends(get_current_user_id)],
     transcript_text: Annotated[str | None, Form()] = None,
     use_fixture: Annotated[bool, Form()] = False,
     audio: UploadFile | None = File(None),
 ) -> dict:
-    patient = get_patient(patient_id)
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    profile = get_profile(user_id)
+    if not profile:
+        raise HTTPException(
+            status_code=400,
+            detail="Profile not set up. POST /me first to create your profile.",
+        )
 
     audio_bytes = None
     if audio is not None:
@@ -146,7 +213,7 @@ async def consultations_create(
     run_id = str(uuid4())
     initial_state = {
         "run_id": run_id,
-        "patient_context": dump_model(patient),
+        "patient_context": dump_model(profile),
         "transcript_text": transcript_text,
         "audio_bytes": audio_bytes,
         "use_fixture": use_fixture,
@@ -159,18 +226,64 @@ async def consultations_create(
     return {"run_id": run_id, "status": "queued"}
 
 
-@app.get("/consultations/{run_id}")
-def consultations_get(run_id: str) -> dict:
+def _ensure_run_owned_by(run_id: str, user_id: str) -> dict | None:
+    """Return the in-memory run dict if it exists and belongs to user_id;
+    otherwise return None. Raises 403 if a foreign run is found in memory."""
     run = store.get(run_id)
     if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
+        return None
     state = run.get("state", {})
-    return {"run_id": run_id, "status": run.get("status"), "state": {k: v for k, v in state.items() if k != "audio_bytes"}}
+    pc = state.get("patient_context") or {}
+    owner = pc.get("patient_id") if isinstance(pc, dict) else None
+    if owner and owner != user_id:
+        raise HTTPException(status_code=403, detail="Run belongs to a different user")
+    return run
+
+
+@app.get("/consultations/{run_id}")
+def consultations_get(
+    run_id: str,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    run = _ensure_run_owned_by(run_id, user_id)
+    if run:
+        state = run.get("state", {})
+        return {
+            "run_id": run_id,
+            "status": run.get("status"),
+            "state": {k: v for k, v in state.items() if k != "audio_bytes"},
+        }
+    record = get_consultation_record(run_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if record.get("user_id") and record["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Run belongs to a different user")
+    return {
+        "run_id": record["run_id"],
+        "status": record["status"],
+        "state": record["state"],
+    }
 
 
 @app.get("/consultations/{run_id}/events")
-async def consultations_events(run_id: str) -> EventSourceResponse:
-    if not store.get(run_id):
+async def consultations_events(
+    run_id: str,
+    authorization: str | None = None,
+    access_token: str | None = Query(default=None),
+) -> EventSourceResponse:
+    """SSE stream. Browsers' native EventSource cannot send Authorization
+    headers, so this endpoint accepts the JWT as `?access_token=` instead.
+    """
+    if access_token:
+        payload = verify_token(access_token)
+        user_id = payload.get("sub")
+    else:
+        user_id = get_current_user_id(authorization)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Missing user")
+
+    run = _ensure_run_owned_by(run_id, user_id)
+    if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
     async def generator():
@@ -181,8 +294,12 @@ async def consultations_events(run_id: str) -> EventSourceResponse:
 
 
 @app.post("/consultations/{run_id}/acknowledge-warnings")
-def acknowledge_warnings(run_id: str, body: AcknowledgeWarningsRequest) -> dict:
-    run = store.get(run_id)
+def acknowledge_warnings(
+    run_id: str,
+    body: AcknowledgeWarningsRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    run = _ensure_run_owned_by(run_id, user_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     state = run.get("state", {})

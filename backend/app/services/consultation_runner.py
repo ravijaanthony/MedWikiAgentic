@@ -5,7 +5,9 @@ from typing import AsyncIterator
 from uuid import uuid4
 
 from app.graph.builder import get_graph
-from app.state.schemas import PipelineEvent
+from app.services import consultation_repo
+from app.state.schemas import PipelineEvent  # noqa: F401  (re-exported for callers)
+from app.utils.warnings import dedupe_warnings
 
 
 class ConsultationStore:
@@ -32,6 +34,13 @@ class ConsultationStore:
 store = ConsultationStore()
 
 
+def _user_id_from_state(state: dict) -> str | None:
+    """The graph state's `patient_context.patient_id` now holds the
+    authenticated user's UUID (auth.users.id)."""
+    pc = state.get("patient_context") or {}
+    return pc.get("patient_id") if isinstance(pc, dict) else None
+
+
 async def run_consultation(initial_state: dict) -> dict:
     run_id = initial_state.get("run_id") or str(uuid4())
     initial_state["run_id"] = run_id
@@ -40,6 +49,16 @@ async def run_consultation(initial_state: dict) -> dict:
     initial_state.setdefault("events", [])
 
     store.set(run_id, {"status": "running", "state": initial_state})
+
+    user_id = _user_id_from_state(initial_state)
+    if user_id:
+        consultation_repo.upsert_consultation(
+            run_id=run_id,
+            user_id=user_id,
+            status="running",
+            state=initial_state,
+            completed=False,
+        )
 
     graph = get_graph()
     final_state = dict(initial_state)
@@ -51,6 +70,7 @@ async def run_consultation(initial_state: dict) -> dict:
                     if key == "warnings" and isinstance(value, list):
                         final_state.setdefault("warnings", [])
                         final_state["warnings"].extend(value)
+                        final_state["warnings"] = dedupe_warnings(final_state["warnings"])
                     elif key == "events" and isinstance(value, list):
                         final_state.setdefault("events", [])
                         final_state["events"].extend(value)
@@ -69,8 +89,19 @@ async def run_consultation(initial_state: dict) -> dict:
                     },
                 )
 
+    if final_state.get("warnings"):
+        final_state["warnings"] = dedupe_warnings(final_state["warnings"])
+
     final_state["status"] = "completed"
     store.set(run_id, {"status": "completed", "state": final_state})
+    if user_id:
+        consultation_repo.upsert_consultation(
+            run_id=run_id,
+            user_id=user_id,
+            status="completed",
+            state=final_state,
+            completed=True,
+        )
     await store.publish(run_id, {"type": "complete", "state": _public_state(final_state)})
     return final_state
 

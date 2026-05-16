@@ -1,3 +1,5 @@
+import { supabase } from "../lib/supabase";
+
 const API_BASE = "/api";
 
 export type Patient = {
@@ -64,55 +66,131 @@ export type PipelineEvent = {
   message: string;
 };
 
-export async function listPatients(): Promise<Patient[]> {
-  const res = await fetch(`${API_BASE}/patients`);
-  if (!res.ok) throw new Error("Failed to load patients");
-  return res.json();
+export type ProfileUpsertPayload = {
+  display_name: string;
+  allergies: string[];
+  current_meds: string[];
+  age: number | null;
+  sex: string | null;
+  linguistic_signature: string;
+};
+
+async function authHeaders(): Promise<HeadersInit> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export async function createPatient(data: Omit<Patient, "patient_id"> & { patient_id?: string }): Promise<Patient> {
-  const res = await fetch(`${API_BASE}/patients`, {
+async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  const auth = await authHeaders();
+  const headers = new Headers(init.headers || {});
+  Object.entries(auth).forEach(([k, v]) => headers.set(k, v as string));
+  return fetch(`${API_BASE}${path}`, { ...init, headers });
+}
+
+async function unwrap<T>(res: Response, fallback: string): Promise<T> {
+  if (res.ok) return (await res.json()) as T;
+  let detail: string | undefined;
+  try {
+    const body = await res.json();
+    if (typeof body?.detail === "string") detail = body.detail;
+    else if (Array.isArray(body?.detail)) detail = body.detail.map((d: { msg?: string }) => d.msg || JSON.stringify(d)).join("; ");
+  } catch {
+    // non-JSON body, ignore
+  }
+  throw new Error(detail ? `${fallback}: ${detail}` : fallback);
+}
+
+export async function getMe(): Promise<Patient | null> {
+  const res = await api("/me");
+  if (res.status === 404) return null;
+  return unwrap<Patient>(res, "Failed to load profile");
+}
+
+export async function upsertMe(payload: ProfileUpsertPayload): Promise<Patient> {
+  const res = await api("/me", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      display_name: data.display_name,
-      allergies: data.allergies,
-      current_meds: data.current_meds,
-      age: data.demographics?.age,
-      sex: data.demographics?.sex,
-      linguistic_signature: data.linguistic_signature,
-    }),
+    body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to create patient");
-  return res.json();
+  return unwrap<Patient>(res, "Failed to save profile");
 }
 
-export async function startConsultation(
-  patientId: string,
-  opts: { transcriptText?: string; useFixture?: boolean; audio?: File }
-): Promise<{ run_id: string }> {
+export async function addMyMedication(medication: string): Promise<Patient> {
+  const res = await api("/me/medications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ medication }),
+  });
+  return unwrap<Patient>(res, "Failed to update medications");
+}
+
+export type TranscribeResult = {
+  transcript: string;
+  metadata: Record<string, unknown>;
+  source: "valsea" | "fixture" | string;
+  dialect?: string;
+};
+
+export async function transcribeAudio(
+  audio: File | Blob,
+  opts?: {
+    filename?: string;
+    durationSeconds?: number;
+    /** Demo fixture transcript when VALSEA unavailable (upload tab only) */
+    allowDemoFallback?: boolean;
+  }
+): Promise<TranscribeResult> {
   const form = new FormData();
-  form.append("patient_id", patientId);
+  const file =
+    audio instanceof File
+      ? audio
+      : new File([audio], opts?.filename ?? "recording.webm", {
+          type: audio.type || "audio/webm",
+        });
+  form.append("audio", file);
+  if (opts?.durationSeconds != null) {
+    form.append("duration_seconds", String(opts.durationSeconds));
+  }
+  if (opts?.allowDemoFallback) {
+    form.append("allow_demo_fallback", "true");
+  }
+
+  const res = await api("/transcribe", { method: "POST", body: form });
+  return unwrap<TranscribeResult>(res, "Transcription failed");
+}
+
+export async function startConsultation(opts: {
+  transcriptText?: string;
+  useFixture?: boolean;
+  audio?: File;
+}): Promise<{ run_id: string }> {
+  const form = new FormData();
   if (opts.transcriptText) form.append("transcript_text", opts.transcriptText);
   if (opts.useFixture) form.append("use_fixture", "true");
   if (opts.audio) form.append("audio", opts.audio);
 
-  const res = await fetch(`${API_BASE}/consultations`, { method: "POST", body: form });
-  if (!res.ok) throw new Error("Failed to start consultation");
-  return res.json();
+  const res = await api("/consultations", { method: "POST", body: form });
+  return unwrap<{ run_id: string }>(res, "Failed to start consultation");
 }
 
-export async function getConsultation(runId: string): Promise<{ status: string; state: ConsultationState }> {
-  const res = await fetch(`${API_BASE}/consultations/${runId}`);
-  if (!res.ok) throw new Error("Failed to fetch consultation");
-  return res.json();
+export async function getConsultation(
+  runId: string
+): Promise<{ status: string; state: ConsultationState }> {
+  const res = await api(`/consultations/${runId}`);
+  return unwrap<{ status: string; state: ConsultationState }>(res, "Failed to fetch consultation");
 }
 
-export function subscribeConsultation(
+export async function subscribeConsultation(
   runId: string,
   onMessage: (payload: unknown) => void
-): () => void {
-  const source = new EventSource(`${API_BASE}/consultations/${runId}/events`);
+): Promise<() => void> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const url = token
+    ? `${API_BASE}/consultations/${runId}/events?access_token=${encodeURIComponent(token)}`
+    : `${API_BASE}/consultations/${runId}/events`;
+  const source = new EventSource(url);
 
   const handlers = ["event", "node_update", "complete", "heartbeat"] as const;
   handlers.forEach((name) => {
@@ -139,19 +217,24 @@ export function markProfileSyncHandled(runId: string): void {
 }
 
 export async function acknowledgeWarnings(runId: string, codes: string[]): Promise<void> {
-  await fetch(`${API_BASE}/consultations/${runId}/acknowledge-warnings`, {
+  await api(`/consultations/${runId}/acknowledge-warnings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ warning_codes: codes }),
   });
 }
 
-export async function addMedication(patientId: string, medication: string): Promise<Patient> {
-  const res = await fetch(`${API_BASE}/patients/${patientId}/medications`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ medication }),
-  });
-  if (!res.ok) throw new Error("Failed to update medications");
-  return res.json();
+export type ConsultationSummary = {
+  run_id: string;
+  status: string;
+  created_at: string | null;
+  completed_at: string | null;
+  integrity_passed: boolean | null;
+  warning_count: number;
+  transcript_preview: string;
+};
+
+export async function listMyConsultations(limit = 20): Promise<ConsultationSummary[]> {
+  const res = await api(`/me/consultations?limit=${limit}`);
+  return unwrap<ConsultationSummary[]>(res, "Failed to load consultation history");
 }
