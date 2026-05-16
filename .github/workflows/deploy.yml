@@ -210,7 +210,7 @@ jobs:
                   fi
                 done
               fi
-              if [ "$COMPOSE_FOUND" != "true" ]; then
+              if [ "$COMPOSE_FOUND" = "false" ]; then
                 NEEDS_COMPOSE_INSTALL=true
               fi
             fi
@@ -227,11 +227,11 @@ jobs:
               fi
               if ! command -v apt-get >/dev/null 2>&1; then
                 echo "Error: apt-get is required to install Docker on this host."
-                echo "This workflow expects a Debian/Ubuntu host or Docker preinstalled."
+                echo "This workflow requires apt-get (Debian/Ubuntu-based) or Docker to be preinstalled."
                 exit 1
               fi
               echo "Updating package lists..."
-              $SUDO apt-get update -y || { echo "Failed to update package lists."; exit 1; }
+              $SUDO apt-get update -y || { echo "Failed to update package lists. Check network connectivity and repository configuration."; exit 1; }
               if [ "$NEEDS_DOCKER_INSTALL" = "true" ]; then
                 echo "Installing Docker Engine (docker.io from distro repositories)."
                 echo "For Docker CE packages, see: https://docs.docker.com/engine/install/"
