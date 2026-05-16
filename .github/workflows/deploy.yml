@@ -193,28 +193,28 @@ jobs:
             export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
             # ── 0. Ensure Docker + Compose are installed ─────────────────────
-            INSTALL_DOCKER=0
-            INSTALL_COMPOSE=0
+            NEEDS_DOCKER_INSTALL=false
+            NEEDS_COMPOSE_INSTALL=false
             if ! command -v docker >/dev/null 2>&1; then
-              INSTALL_DOCKER=1
-              INSTALL_COMPOSE=1
+              NEEDS_DOCKER_INSTALL=true
+              NEEDS_COMPOSE_INSTALL=true
             else
-              HAS_COMPOSE=0
+              COMPOSE_FOUND=false
               if docker compose version --short >/dev/null 2>&1; then
-                HAS_COMPOSE=1
+                COMPOSE_FOUND=true
               else
                 for path in /usr/libexec/docker/cli-plugins/docker-compose /usr/local/lib/docker/cli-plugins/docker-compose /usr/lib/docker/cli-plugins/docker-compose; do
                   if [ -x "$path" ]; then
-                    HAS_COMPOSE=1
+                    COMPOSE_FOUND=true
                     break
                   fi
                 done
               fi
-              if [ "$HAS_COMPOSE" -ne 1 ]; then
-                INSTALL_COMPOSE=1
+              if [ "$COMPOSE_FOUND" != "true" ]; then
+                NEEDS_COMPOSE_INSTALL=true
               fi
             fi
-            if [ "$INSTALL_DOCKER" -eq 1 ] || [ "$INSTALL_COMPOSE" -eq 1 ]; then
+            if [ "$NEEDS_DOCKER_INSTALL" = "true" ] || [ "$NEEDS_COMPOSE_INSTALL" = "true" ]; then
               echo "Installing missing Docker components..."
               SUDO=""
               if [ "$(id -u)" -ne 0 ]; then
@@ -231,13 +231,13 @@ jobs:
               fi
               echo "Updating package lists..."
               $SUDO apt-get update -y || { echo "Failed to update package lists."; exit 1; }
-              if [ "$INSTALL_DOCKER" -eq 1 ]; then
+              if [ "$NEEDS_DOCKER_INSTALL" = "true" ]; then
                 echo "Installing Docker Engine (docker.io from distro repositories)."
-                echo "For Docker CE packages, see: https://docs.docker.com/engine/install/ubuntu/"
+                echo "For Docker CE packages, see: https://docs.docker.com/engine/install/"
                 $SUDO apt-get install -y docker.io || { echo "Failed to install docker.io."; exit 1; }
                 $SUDO systemctl enable --now docker || { echo "Failed to enable Docker service."; exit 1; }
               fi
-              if [ "$INSTALL_COMPOSE" -eq 1 ]; then
+              if [ "$NEEDS_COMPOSE_INSTALL" = "true" ]; then
                 echo "Installing Docker Compose plugin..."
                 if ! $SUDO apt-get install -y docker-compose-plugin; then
                   echo "Failed to install docker-compose-plugin."
