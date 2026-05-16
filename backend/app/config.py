@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LlmProvider = Literal["gemini", "openai", "none"]
@@ -28,8 +29,18 @@ class Settings(BaseSettings):
     valsea_api_key: str = ""
     valsea_base_url: str = "https://api.valsea.ai"
 
-    database_url: str = "sqlite:///./swaramed.db"
+    database_url: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(cls, value: str) -> str:
+        url = value.strip()
+        if not url:
+            raise ValueError("DATABASE_URL is required (Supabase PostgreSQL connection string)")
+        if not url.startswith(("postgresql://", "postgres://")):
+            raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
+        return url
 
     @property
     def llm_provider(self) -> LlmProvider:

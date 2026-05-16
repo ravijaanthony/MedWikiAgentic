@@ -18,11 +18,27 @@ cd backend
 python -m venv .venv
 .venv\Scripts\activate   # Windows
 pip install -e ".[dev]"
-copy .env.example .env     # optional: set GEMINI_API_KEY and/or OPENAI_API_KEY
+copy .env.example .env     # set DATABASE_URL (required) and optional LLM keys
 uvicorn app.main:app --reload --port 8000
 ```
 
 API: http://127.0.0.1:8000 — health check at `/health` (includes active `llm_provider`)
+
+### Database (Supabase Postgres)
+
+This project requires a Supabase Postgres connection. Free tier works fine.
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. Project Settings -> Database -> **Transaction pooler** -> copy the URL (port `6543`).
+3. Set `DATABASE_URL` in `backend/.env` (template in `.env.example`):
+
+   ```env
+   DATABASE_URL=postgresql://postgres.[project-ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?sslmode=require
+   ```
+
+4. Apply the schema once via Supabase SQL editor with `supabase/migrations/001_patients.sql` (or rely on `init_db()` which auto-creates the table on first request).
+
+The API refuses to start without a valid Postgres URL. Consultation pipeline state is in-memory and is not persisted to the database.
 
 ### LLM keys (auto-detect)
 
@@ -89,6 +105,8 @@ VALSEA ingest → Refine (o1/mini) → Dispatch → Parallel specialists → Mer
 cd backend
 pytest
 ```
+
+The patient CRUD test auto-skips unless `DATABASE_URL` in `backend/.env` is a real Supabase URL (placeholder `[project-ref]` values are detected and skipped).
 
 ## Stack (non-negotiable per brief)
 
