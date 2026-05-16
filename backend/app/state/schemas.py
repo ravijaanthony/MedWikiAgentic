@@ -83,6 +83,7 @@ class ClinicalNoteSection(BaseModel):
 
 class ClinicalNote(BaseModel):
     sections: list[ClinicalNoteSection] = Field(default_factory=list)
+    source: Literal["llm", "heuristic"] = "llm"
 
 
 class IntegrityIssue(BaseModel):

@@ -140,6 +140,48 @@ All `/me/*` and `/consultations/*` endpoints require `Authorization: Bearer <jwt
 | GET  | `/consultations/{id}/events` | SSE stream — pass `?access_token=<jwt>` |
 | POST | `/consultations/{id}/acknowledge-warnings` | Dismiss warnings |
 
+## Deployment (DigitalOcean Droplet)
+
+Production runs on a single Droplet at **http://167.71.21.93** (nginx on port 80 proxies `/api/` to the backend). Images are built in GitHub Actions, pushed to GHCR, and pulled on the server — the Droplet does not build from source.
+
+### GitHub Actions secrets
+
+Repo → **Settings** → **Secrets and variables** → **Actions**:
+
+| Secret | Value |
+|--------|--------|
+| `DROPLET_HOST` | `167.71.21.93` |
+| `DROPLET_USER` | `root` (or your SSH user) |
+| `DROPLET_SSH_KEY` | Full private key matching `authorized_keys` on the Droplet |
+| `VITE_SUPABASE_URL` | Your Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Supabase anon key |
+
+Also enable **Settings** → **Actions** → **General** → Workflow permissions: **Read and write**.
+
+Trigger: push to `main`, or **Actions** → **Deploy to DigitalOcean Droplet** → **Run workflow**.
+
+### One-time Droplet setup (SSH as root)
+
+```bash
+mkdir -p /opt/medwiki/backend
+nano /opt/medwiki/backend/.env   # copy from backend/.env.example; use real secrets
+```
+
+Required in `/opt/medwiki/backend/.env`:
+
+- `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_JWT_SECRET` (if HS256)
+- `CORS_ORIGINS` must include the public origin, e.g. `http://167.71.21.93` (see `backend/.env.example`)
+- Optional: `GEMINI_API_KEY` / `OPENAI_API_KEY`, `VALSEA_API_KEY`
+
+Open firewall ports **22** (SSH) and **80** (HTTP).
+
+After the first successful workflow run, verify:
+
+- App: http://167.71.21.93
+- Health: http://167.71.21.93/api/health
+
+Files involved: `.github/workflows/deploy.yml`, `docker-compose.prod.yml`.
+
 ## Tests
 
 ```bash
@@ -155,6 +197,7 @@ pytest
 - **Pooler vs direct DB:** Always use the Transaction pooler (`:6543`). The direct `db.<ref>.supabase.co:5432` URL is IPv6-first, has no connection pooling, and adds 5-10 s of latency per request.
 - **JWT secret rotation:** If `SUPABASE_JWT_SECRET` is ever leaked, rotate it in Supabase Dashboard → Project Settings → API → JWT Settings → Rotate, then update `backend/.env` and restart.
 - **Email confirmation:** Re-enable for production; the demo flow assumes auto-login on signup.
+- **Production Droplet:** http://167.71.21.93 — ensure `CORS_ORIGINS` on the server includes that origin; redeploy via push to `main`.
 
 ## Stack
 

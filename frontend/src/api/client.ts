@@ -34,7 +34,7 @@ export type ConsultationState = {
     unverified?: boolean;
     source?: "llm" | "heuristic";
   };
-  clinical_note?: { sections: { title: string; content: string; citations: string[] }[] };
+  clinical_note?: { sections: { title: string; content: string; citations: string[] }[]; source?: "llm" | "heuristic" };
   integrity_report?: { passed: boolean; issues: { field: string; message: string }[] };
   warnings?: Warning[];
   events?: PipelineEvent[];
@@ -105,6 +105,25 @@ export async function getMe(): Promise<Patient | null> {
   const res = await api("/me");
   if (res.status === 404) return null;
   return unwrap<Patient>(res, "Failed to load profile");
+}
+
+export type CreatePatientPayload = {
+  display_name: string;
+  allergies: string[];
+  current_meds: string[];
+  demographics: { age: number | null; sex: string | null };
+  linguistic_signature: string;
+};
+
+export async function createPatient(payload: CreatePatientPayload): Promise<Patient> {
+  return upsertMe({
+    display_name: payload.display_name,
+    allergies: payload.allergies,
+    current_meds: payload.current_meds,
+    age: payload.demographics.age,
+    sex: payload.demographics.sex,
+    linguistic_signature: payload.linguistic_signature,
+  });
 }
 
 export async function upsertMe(payload: ProfileUpsertPayload): Promise<Patient> {
