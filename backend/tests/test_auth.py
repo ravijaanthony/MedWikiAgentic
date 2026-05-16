@@ -15,10 +15,12 @@ from app.config import get_settings
 
 _TEST_SECRET = "test-jwt-secret-for-auth-roundtrip-32+chars"
 _TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+_TEST_SUPABASE_URL = "https://test.supabase.co"
 
 
 def _setup_settings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATABASE_URL", _TEST_DATABASE_URL)
+    monkeypatch.setenv("SUPABASE_URL", _TEST_SUPABASE_URL)
     monkeypatch.setenv("SUPABASE_JWT_SECRET", _TEST_SECRET)
     get_settings.cache_clear()
 

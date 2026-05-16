@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     valsea_base_url: str = "https://api.valsea.ai"
 
     database_url: str = ""
+    supabase_url: str = ""
     supabase_jwt_secret: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
@@ -43,16 +44,23 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
         return url
 
-    @field_validator("supabase_jwt_secret")
+    @field_validator("supabase_url")
     @classmethod
-    def validate_jwt_secret(cls, value: str) -> str:
-        secret = value.strip()
-        if not secret:
+    def validate_supabase_url(cls, value: str) -> str:
+        url = value.strip().rstrip("/")
+        if not url:
             raise ValueError(
-                "SUPABASE_JWT_SECRET is required. Copy it from "
-                "Supabase Dashboard -> Project Settings -> API -> JWT Settings -> JWT Secret."
+                "SUPABASE_URL is required. Copy your project URL from "
+                "Supabase Dashboard -> Project Settings -> API -> Project URL "
+                "(used to fetch JWKS for token verification)."
             )
-        return secret
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("SUPABASE_URL must start with http:// or https://")
+        return url
+
+    @property
+    def jwks_url(self) -> str:
+        return f"{self.supabase_url}/auth/v1/.well-known/jwks.json"
 
     @property
     def llm_provider(self) -> LlmProvider:

@@ -7,7 +7,11 @@
 -- Backend talks to Postgres as the `postgres` role (bypasses RLS). RLS here
 -- is defense in depth in case the frontend ever talks to Supabase directly.
 
+-- Idempotent: safe to re-run. Drops anything we may have created in a
+-- previous attempt (including the FK-less `profiles` table the in-app
+-- fallback creates if init_db() runs before this migration).
 DROP TABLE IF EXISTS consultations CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
 DROP TABLE IF EXISTS patients CASCADE;
 
 CREATE TABLE profiles (

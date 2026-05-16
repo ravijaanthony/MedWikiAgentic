@@ -3,6 +3,7 @@ from app.config import Settings, get_settings
 
 _TEST_DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
 _TEST_JWT_SECRET = "test-jwt-secret"
+_TEST_SUPABASE_URL = "https://test.supabase.co"
 
 
 def _clear_settings_cache() -> None:
@@ -11,6 +12,7 @@ def _clear_settings_cache() -> None:
 
 def _set_required_env(monkeypatch) -> None:
     monkeypatch.setenv("DATABASE_URL", _TEST_DATABASE_URL)
+    monkeypatch.setenv("SUPABASE_URL", _TEST_SUPABASE_URL)
     monkeypatch.setenv("SUPABASE_JWT_SECRET", _TEST_JWT_SECRET)
 
 
