@@ -73,6 +73,11 @@ export default function SpecialistTabs({ state, onCitationClick }: Props) {
         {tab === "clinical" &&
           (state.clinical_note?.sections?.length ? (
             <div className="space-y-4">
+              {state.clinical_note.source === "heuristic" && (
+                <p className="text-xs text-amber-700 mb-2">
+                  Generated without LLM — sections extracted directly from transcript.
+                </p>
+              )}
               {state.clinical_note.sections.map((s) => (
                 <div key={s.title}>
                   <h4 className="font-semibold text-slate-800">{s.title}</h4>

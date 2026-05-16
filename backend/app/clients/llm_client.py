@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Literal
 
 from app.config import LlmProvider, get_settings
@@ -9,6 +10,13 @@ from app.config import LlmProvider, get_settings
 logger = logging.getLogger(__name__)
 
 ModelKind = Literal["refine", "agent"]
+
+
+def _strip_fences(text: str) -> str:
+    """Remove markdown code fences that some LLMs wrap around JSON responses."""
+    text = text.strip()
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", text, re.DOTALL)
+    return m.group(1) if m else text
 
 
 def get_active_provider() -> LlmProvider:
@@ -52,7 +60,7 @@ async def _complete_openai(system: str, user: str, model: str) -> dict:
         temperature=0.2,
     )
     content = response.choices[0].message.content or "{}"
-    return json.loads(content)
+    return json.loads(_strip_fences(content))
 
 
 async def _complete_gemini(system: str, user: str, model: str) -> dict:
@@ -70,4 +78,4 @@ async def _complete_gemini(system: str, user: str, model: str) -> dict:
         ),
     )
     text = response.text or "{}"
-    return json.loads(text)
+    return json.loads(_strip_fences(text))

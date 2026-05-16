@@ -34,7 +34,7 @@ export type ConsultationState = {
     unverified?: boolean;
     source?: "llm" | "heuristic";
   };
-  clinical_note?: { sections: { title: string; content: string; citations: string[] }[] };
+  clinical_note?: { sections: { title: string; content: string; citations: string[] }[]; source?: "llm" | "heuristic" };
   integrity_report?: { passed: boolean; issues: { field: string; message: string }[] };
   warnings?: Warning[];
   events?: PipelineEvent[];
