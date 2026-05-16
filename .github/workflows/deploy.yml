@@ -159,9 +159,7 @@ jobs:
     permissions:
       contents: read
       packages: read   # GITHUB_TOKEN must read GHCR when the Droplet pulls images
-    environment:
-      name: production
-      url: http://${{ secrets.DROPLET_HOST }}
+    environment: production
 
     steps:
       - name: Checkout
