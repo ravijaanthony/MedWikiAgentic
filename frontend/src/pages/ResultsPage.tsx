@@ -23,6 +23,7 @@ export default function ResultsPage() {
   const [showSync, setShowSync] = useState(false);
   const [syncDrug, setSyncDrug] = useState("Amoxicillin");
   const profileSyncShownRef = useRef(false);
+  const completedRef = useRef(false);
 
   const completedNodes = useMemo(() => {
     const nodes = new Set<string>();
@@ -50,25 +51,35 @@ export default function ResultsPage() {
 
   const refresh = useCallback(async () => {
     if (!runId) return;
-    const data = await getConsultation(runId);
-    setStatus(data.status);
-    setState(data.state);
-    if (data.status === "completed") {
-      maybeShowProfileSync(data.state);
+    try {
+      const data = await getConsultation(runId);
+      setStatus(data.status);
+      setState(data.state);
+      if (data.status === "completed") {
+        completedRef.current = true;
+        maybeShowProfileSync(data.state);
+      }
+    } catch {
+      /* SSE / next poll will retry */
     }
   }, [runId, maybeShowProfileSync]);
 
   useEffect(() => {
     if (!runId) return;
+
+    completedRef.current = false;
     profileSyncShownRef.current = isProfileSyncHandled(runId);
-    const completedRef = { current: false };
+    let cancelled = false;
     let unsub: (() => void) | null = null;
 
-    refresh();
+    void refresh();
+
     subscribeConsultation(runId, (raw) => {
+      if (cancelled) return;
       const msg = raw as { type?: string; state?: ConsultationState };
-      if (msg.type === "node_update" && msg.state) {
+      if (msg.type === "node_update" && msg.state && !completedRef.current) {
         setState(msg.state);
+        setStatus("running");
       }
       if (msg.type === "complete" && msg.state) {
         completedRef.current = true;
@@ -77,13 +88,16 @@ export default function ResultsPage() {
         maybeShowProfileSync(msg.state);
       }
     }).then((cleanup) => {
-      unsub = cleanup;
+      if (cancelled) cleanup();
+      else unsub = cleanup;
     });
 
     const interval = setInterval(() => {
-      if (!completedRef.current) refresh();
+      if (!completedRef.current) void refresh();
     }, 3000);
+
     return () => {
+      cancelled = true;
       if (unsub) unsub();
       clearInterval(interval);
     };
@@ -115,7 +129,7 @@ export default function ResultsPage() {
 
   return (
     <div>
-      <header className="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-clinical-900">Consultation results</h1>
           <p className="text-sm text-slate-500">
@@ -133,7 +147,7 @@ export default function ResultsPage() {
 
       <WarningBanner warnings={warnings} onDismiss={handleDismiss} />
 
-      <div className="grid lg:grid-cols-2 gap-6 min-h-[480px]">
+      <div className="grid min-h-[480px] gap-6 lg:grid-cols-2">
         <TranscriptPanel transcript={transcript} highlight={highlight} />
         <SpecialistTabs state={state} onCitationClick={setHighlight} />
       </div>

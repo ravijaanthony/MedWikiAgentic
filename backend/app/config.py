@@ -9,6 +9,7 @@ LlmProvider = Literal["gemini", "openai", "none"]
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
 _ENV_FILE = _BACKEND_ROOT / ".env"
+_GLOBAL_ENV_FILE = _BACKEND_ROOT.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -28,6 +29,8 @@ class Settings(BaseSettings):
 
     valsea_api_key: str = ""
     valsea_base_url: str = "https://api.valsea.ai"
+    valsea_model: str = "valsea-transcribe"
+    valsea_language: str = "singlish"
 
     database_url: str = ""
     supabase_url: str = ""
@@ -77,4 +80,17 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if settings.valsea_api_key:
+        return settings
+
+    # Optional fallback: allow VALSEA_API_KEY to live in repo-root .env
+    # while backend/.env retains non-secret defaults.
+    if _GLOBAL_ENV_FILE.exists():
+        from dotenv import dotenv_values
+
+        fallback_key = (dotenv_values(_GLOBAL_ENV_FILE).get("VALSEA_API_KEY") or "").strip()
+        if fallback_key:
+            return settings.model_copy(update={"valsea_api_key": fallback_key})
+
+    return settings

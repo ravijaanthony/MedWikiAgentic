@@ -31,9 +31,14 @@ In your Supabase project dashboard:
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\activate   # Windows
+# Windows
+.venv\Scripts\activate
 pip install -e ".[dev]"
 copy .env.example .env
+# macOS / Linux
+# source .venv/bin/activate
+# python3 -m pip install -e '.[dev]'
+# cp .env.example .env
 ```
 
 Edit `backend/.env`:
@@ -53,6 +58,11 @@ OPENAI_API_KEY=
 Then:
 
 ```bash
+source .venv/bin/activate # macOS
+pip install -e ".[dev]" # Windows
+python3 -m pip install -e '.[dev]' # macOS
+copy .env.example .env     # optional: set GEMINI_API_KEY and/or OPENAI_API_KEY
+cp .env.example .env    # macOS
 uvicorn app.main:app --reload --port 8000
 ```
 

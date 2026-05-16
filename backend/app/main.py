@@ -18,12 +18,15 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from app.auth import get_current_user_id, verify_token
+from app.clients.valsea import transcribe_audio
 from app.config import _ENV_FILE, get_settings
 from app.services.consultation_repo import (
     get_consultation as get_consultation_record,
     init_consultations_db,
     list_consultations_for_user,
 )
+from app.utils.audio_validation import validate_audio_payload
+from app.utils.warnings import dedupe_warnings
 from app.services.consultation_runner import run_consultation, store, stream_events
 from app.services.user_profile import (
     add_medication,
@@ -137,6 +140,50 @@ def me_consultations(
 
 
 # --- Consultations ------------------------------------------------------------
+
+
+@app.post("/transcribe")
+async def transcribe_consultation_audio(
+    audio: UploadFile = File(...),
+    patient_id: Annotated[str | None, Form()] = None,
+    duration_seconds: Annotated[float | None, Form()] = None,
+    allow_demo_fallback: Annotated[bool, Form()] = False,
+) -> dict:
+    """Transcribe audio via VALSEA. Rejects empty/silent clips; demo fallback only when opted in."""
+    settings = get_settings()
+    audio_bytes = await audio.read()
+    try:
+        validate_audio_payload(audio_bytes, duration_seconds=duration_seconds)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    dialect = "English"
+    if patient_id:
+        patient = get_patient(patient_id)
+        if patient:
+            dialect = patient.linguistic_signature
+
+    filename = audio.filename or "consultation.webm"
+    content_type = audio.content_type or "audio/webm"
+    try:
+        raw, meta = await transcribe_audio(
+            audio_bytes,
+            use_fixture=False,
+            allow_fixture_fallback=allow_demo_fallback,
+            filename=filename,
+            content_type=content_type,
+            language=dialect,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    source = "valsea" if settings.valsea_api_key else "fixture"
+    return {
+        "transcript": raw,
+        "metadata": meta,
+        "source": source,
+        "dialect": dialect,
+    }
 
 
 @app.post("/consultations")

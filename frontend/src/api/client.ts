@@ -125,6 +125,41 @@ export async function addMyMedication(medication: string): Promise<Patient> {
   return unwrap<Patient>(res, "Failed to update medications");
 }
 
+export type TranscribeResult = {
+  transcript: string;
+  metadata: Record<string, unknown>;
+  source: "valsea" | "fixture" | string;
+  dialect?: string;
+};
+
+export async function transcribeAudio(
+  audio: File | Blob,
+  opts?: {
+    filename?: string;
+    durationSeconds?: number;
+    /** Demo fixture transcript when VALSEA unavailable (upload tab only) */
+    allowDemoFallback?: boolean;
+  }
+): Promise<TranscribeResult> {
+  const form = new FormData();
+  const file =
+    audio instanceof File
+      ? audio
+      : new File([audio], opts?.filename ?? "recording.webm", {
+          type: audio.type || "audio/webm",
+        });
+  form.append("audio", file);
+  if (opts?.durationSeconds != null) {
+    form.append("duration_seconds", String(opts.durationSeconds));
+  }
+  if (opts?.allowDemoFallback) {
+    form.append("allow_demo_fallback", "true");
+  }
+
+  const res = await api("/transcribe", { method: "POST", body: form });
+  return unwrap<TranscribeResult>(res, "Transcription failed");
+}
+
 export async function startConsultation(opts: {
   transcriptText?: string;
   useFixture?: boolean;

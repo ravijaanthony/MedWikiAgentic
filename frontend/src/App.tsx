@@ -1,4 +1,4 @@
-import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { Link, Navigate, Route, Routes, useLocation, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import ConsultPage from "./pages/ConsultPage";
@@ -7,7 +7,16 @@ import LoginPage from "./pages/LoginPage";
 import ResultsPage from "./pages/ResultsPage";
 import SignupPage from "./pages/SignupPage";
 
+const IMMERSIVE_PATHS = new Set(["/", "/onboarding", "/consult"]);
+
+function isImmersivePath(pathname: string) {
+  return IMMERSIVE_PATHS.has(pathname);
+}
+
 export default function App() {
+  const { pathname } = useLocation();
+  const immersive = isImmersivePath(pathname);
+
   return (
     <AuthProvider>
       <div className="min-h-screen">
