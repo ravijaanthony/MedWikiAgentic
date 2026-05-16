@@ -13,7 +13,7 @@ _logger = logging.getLogger(__name__)
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS consultations (
     run_id TEXT PRIMARY KEY,
-    patient_id TEXT NOT NULL REFERENCES patients(patient_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL,
     status TEXT NOT NULL DEFAULT 'queued',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ,
@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS consultations (
 """
 
 _CREATE_INDEX_SQL = """
-CREATE INDEX IF NOT EXISTS idx_consultations_patient_created
-    ON consultations (patient_id, created_at DESC)
+CREATE INDEX IF NOT EXISTS idx_consultations_user_created
+    ON consultations (user_id, created_at DESC)
 """
 
 
@@ -35,6 +35,9 @@ def _connect() -> psycopg.Connection:
 
 
 def init_consultations_db() -> None:
+    """Idempotent fallback. Canonical DDL lives in
+    `supabase/migrations/003_user_profiles.sql` which also adds the FK to
+    `auth.users(id)` and RLS policies."""
     with _connect() as conn:
         conn.execute(_CREATE_TABLE_SQL)
         conn.execute(_CREATE_INDEX_SQL)
@@ -47,7 +50,7 @@ def _strip_for_storage(state: dict) -> dict:
 
 def upsert_consultation(
     run_id: str,
-    patient_id: str,
+    user_id: str,
     status: str,
     state: dict,
     completed: bool = False,
@@ -57,7 +60,7 @@ def upsert_consultation(
     """
     payload = _strip_for_storage(state)
     sql = """
-    INSERT INTO consultations (run_id, patient_id, status, state, completed_at)
+    INSERT INTO consultations (run_id, user_id, status, state, completed_at)
     VALUES (%s, %s, %s, %s, CASE WHEN %s THEN NOW() ELSE NULL END)
     ON CONFLICT (run_id) DO UPDATE SET
         status = EXCLUDED.status,
@@ -66,7 +69,7 @@ def upsert_consultation(
     """
     try:
         with _connect() as conn:
-            conn.execute(sql, (run_id, patient_id, status, Jsonb(payload), completed, completed))
+            conn.execute(sql, (run_id, user_id, status, Jsonb(payload), completed, completed))
             conn.commit()
     except Exception as exc:
         _logger.warning("Failed to persist consultation %s: %s", run_id, exc)
@@ -76,7 +79,7 @@ def get_consultation(run_id: str) -> dict | None:
     with _connect() as conn:
         row = conn.execute(
             """
-            SELECT run_id, patient_id, status, created_at, completed_at, state
+            SELECT run_id, user_id, status, created_at, completed_at, state
             FROM consultations WHERE run_id = %s
             """,
             (run_id,),
@@ -85,7 +88,7 @@ def get_consultation(run_id: str) -> dict | None:
         return None
     return {
         "run_id": row[0],
-        "patient_id": row[1],
+        "user_id": str(row[1]),
         "status": row[2],
         "created_at": row[3].isoformat() if row[3] else None,
         "completed_at": row[4].isoformat() if row[4] else None,
@@ -93,7 +96,7 @@ def get_consultation(run_id: str) -> dict | None:
     }
 
 
-def list_consultations_for_patient(patient_id: str, limit: int = 20) -> list[dict]:
+def list_consultations_for_user(user_id: str, limit: int = 20) -> list[dict]:
     sql = """
     SELECT
         run_id,
@@ -104,12 +107,12 @@ def list_consultations_for_patient(patient_id: str, limit: int = 20) -> list[dic
         jsonb_array_length(COALESCE(state->'warnings', '[]'::jsonb)) AS warning_count,
         COALESCE(state->>'ground_truth_transcript', state->>'raw_transcript', '') AS transcript_preview
     FROM consultations
-    WHERE patient_id = %s
+    WHERE user_id = %s
     ORDER BY created_at DESC
     LIMIT %s
     """
     with _connect() as conn:
-        rows = conn.execute(sql, (patient_id, limit)).fetchall()
+        rows = conn.execute(sql, (user_id, limit)).fetchall()
     summaries = []
     for r in rows:
         preview = (r[6] or "")[:120]

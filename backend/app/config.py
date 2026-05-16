@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     valsea_base_url: str = "https://api.valsea.ai"
 
     database_url: str = ""
+    supabase_jwt_secret: str = ""
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     @field_validator("database_url")
@@ -41,6 +42,17 @@ class Settings(BaseSettings):
         if not url.startswith(("postgresql://", "postgres://")):
             raise ValueError("DATABASE_URL must start with postgresql:// or postgres://")
         return url
+
+    @field_validator("supabase_jwt_secret")
+    @classmethod
+    def validate_jwt_secret(cls, value: str) -> str:
+        secret = value.strip()
+        if not secret:
+            raise ValueError(
+                "SUPABASE_JWT_SECRET is required. Copy it from "
+                "Supabase Dashboard -> Project Settings -> API -> JWT Settings -> JWT Secret."
+            )
+        return secret
 
     @property
     def llm_provider(self) -> LlmProvider:

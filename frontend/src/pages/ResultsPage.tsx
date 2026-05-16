@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   acknowledgeWarnings,
-  addMedication,
+  addMyMedication,
   getConsultation,
   isProfileSyncHandled,
   markProfileSyncHandled,
@@ -62,9 +62,10 @@ export default function ResultsPage() {
     if (!runId) return;
     profileSyncShownRef.current = isProfileSyncHandled(runId);
     const completedRef = { current: false };
+    let unsub: (() => void) | null = null;
 
     refresh();
-    const unsub = subscribeConsultation(runId, (raw) => {
+    subscribeConsultation(runId, (raw) => {
       const msg = raw as { type?: string; state?: ConsultationState };
       if (msg.type === "node_update" && msg.state) {
         setState(msg.state);
@@ -75,12 +76,15 @@ export default function ResultsPage() {
         setStatus("completed");
         maybeShowProfileSync(msg.state);
       }
+    }).then((cleanup) => {
+      unsub = cleanup;
     });
+
     const interval = setInterval(() => {
       if (!completedRef.current) refresh();
     }, 3000);
     return () => {
-      unsub();
+      if (unsub) unsub();
       clearInterval(interval);
     };
   }, [runId, refresh, maybeShowProfileSync]);
@@ -103,8 +107,7 @@ export default function ResultsPage() {
   }
 
   async function handleProfileSync() {
-    const pid = state.patient_context?.patient_id;
-    if (pid) await addMedication(pid, syncDrug);
+    await addMyMedication(syncDrug);
     dismissProfileSync();
   }
 

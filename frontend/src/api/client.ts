@@ -1,3 +1,5 @@
+import { supabase } from "../lib/supabase";
+
 const API_BASE = "/api";
 
 export type Patient = {
@@ -64,55 +66,88 @@ export type PipelineEvent = {
   message: string;
 };
 
-export async function listPatients(): Promise<Patient[]> {
-  const res = await fetch(`${API_BASE}/patients`);
-  if (!res.ok) throw new Error("Failed to load patients");
+export type ProfileUpsertPayload = {
+  display_name: string;
+  allergies: string[];
+  current_meds: string[];
+  age: number | null;
+  sex: string | null;
+  linguistic_signature: string;
+};
+
+async function authHeaders(): Promise<HeadersInit> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+async function api(path: string, init: RequestInit = {}): Promise<Response> {
+  const auth = await authHeaders();
+  const headers = new Headers(init.headers || {});
+  Object.entries(auth).forEach(([k, v]) => headers.set(k, v as string));
+  return fetch(`${API_BASE}${path}`, { ...init, headers });
+}
+
+export async function getMe(): Promise<Patient | null> {
+  const res = await api("/me");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to load profile");
   return res.json();
 }
 
-export async function createPatient(data: Omit<Patient, "patient_id"> & { patient_id?: string }): Promise<Patient> {
-  const res = await fetch(`${API_BASE}/patients`, {
+export async function upsertMe(payload: ProfileUpsertPayload): Promise<Patient> {
+  const res = await api("/me", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      display_name: data.display_name,
-      allergies: data.allergies,
-      current_meds: data.current_meds,
-      age: data.demographics?.age,
-      sex: data.demographics?.sex,
-      linguistic_signature: data.linguistic_signature,
-    }),
+    body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Failed to create patient");
+  if (!res.ok) throw new Error("Failed to save profile");
   return res.json();
 }
 
-export async function startConsultation(
-  patientId: string,
-  opts: { transcriptText?: string; useFixture?: boolean; audio?: File }
-): Promise<{ run_id: string }> {
+export async function addMyMedication(medication: string): Promise<Patient> {
+  const res = await api("/me/medications", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ medication }),
+  });
+  if (!res.ok) throw new Error("Failed to update medications");
+  return res.json();
+}
+
+export async function startConsultation(opts: {
+  transcriptText?: string;
+  useFixture?: boolean;
+  audio?: File;
+}): Promise<{ run_id: string }> {
   const form = new FormData();
-  form.append("patient_id", patientId);
   if (opts.transcriptText) form.append("transcript_text", opts.transcriptText);
   if (opts.useFixture) form.append("use_fixture", "true");
   if (opts.audio) form.append("audio", opts.audio);
 
-  const res = await fetch(`${API_BASE}/consultations`, { method: "POST", body: form });
+  const res = await api("/consultations", { method: "POST", body: form });
   if (!res.ok) throw new Error("Failed to start consultation");
   return res.json();
 }
 
-export async function getConsultation(runId: string): Promise<{ status: string; state: ConsultationState }> {
-  const res = await fetch(`${API_BASE}/consultations/${runId}`);
+export async function getConsultation(
+  runId: string
+): Promise<{ status: string; state: ConsultationState }> {
+  const res = await api(`/consultations/${runId}`);
   if (!res.ok) throw new Error("Failed to fetch consultation");
   return res.json();
 }
 
-export function subscribeConsultation(
+export async function subscribeConsultation(
   runId: string,
   onMessage: (payload: unknown) => void
-): () => void {
-  const source = new EventSource(`${API_BASE}/consultations/${runId}/events`);
+): Promise<() => void> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  const url = token
+    ? `${API_BASE}/consultations/${runId}/events?access_token=${encodeURIComponent(token)}`
+    : `${API_BASE}/consultations/${runId}/events`;
+  const source = new EventSource(url);
 
   const handlers = ["event", "node_update", "complete", "heartbeat"] as const;
   handlers.forEach((name) => {
@@ -139,21 +174,11 @@ export function markProfileSyncHandled(runId: string): void {
 }
 
 export async function acknowledgeWarnings(runId: string, codes: string[]): Promise<void> {
-  await fetch(`${API_BASE}/consultations/${runId}/acknowledge-warnings`, {
+  await api(`/consultations/${runId}/acknowledge-warnings`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ warning_codes: codes }),
   });
-}
-
-export async function addMedication(patientId: string, medication: string): Promise<Patient> {
-  const res = await fetch(`${API_BASE}/patients/${patientId}/medications`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ medication }),
-  });
-  if (!res.ok) throw new Error("Failed to update medications");
-  return res.json();
 }
 
 export type ConsultationSummary = {
@@ -166,13 +191,8 @@ export type ConsultationSummary = {
   transcript_preview: string;
 };
 
-export async function listPatientConsultations(
-  patientId: string,
-  limit = 10
-): Promise<ConsultationSummary[]> {
-  const res = await fetch(
-    `${API_BASE}/patients/${patientId}/consultations?limit=${limit}`
-  );
+export async function listMyConsultations(limit = 20): Promise<ConsultationSummary[]> {
+  const res = await api(`/me/consultations?limit=${limit}`);
   if (!res.ok) throw new Error("Failed to load consultation history");
   return res.json();
 }

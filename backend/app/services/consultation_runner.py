@@ -33,7 +33,9 @@ class ConsultationStore:
 store = ConsultationStore()
 
 
-def _patient_id_from_state(state: dict) -> str | None:
+def _user_id_from_state(state: dict) -> str | None:
+    """The graph state's `patient_context.patient_id` now holds the
+    authenticated user's UUID (auth.users.id)."""
     pc = state.get("patient_context") or {}
     return pc.get("patient_id") if isinstance(pc, dict) else None
 
@@ -47,11 +49,11 @@ async def run_consultation(initial_state: dict) -> dict:
 
     store.set(run_id, {"status": "running", "state": initial_state})
 
-    patient_id = _patient_id_from_state(initial_state)
-    if patient_id:
+    user_id = _user_id_from_state(initial_state)
+    if user_id:
         consultation_repo.upsert_consultation(
             run_id=run_id,
-            patient_id=patient_id,
+            user_id=user_id,
             status="running",
             state=initial_state,
             completed=False,
@@ -87,10 +89,10 @@ async def run_consultation(initial_state: dict) -> dict:
 
     final_state["status"] = "completed"
     store.set(run_id, {"status": "completed", "state": final_state})
-    if patient_id:
+    if user_id:
         consultation_repo.upsert_consultation(
             run_id=run_id,
-            patient_id=patient_id,
+            user_id=user_id,
             status="completed",
             state=final_state,
             completed=True,
