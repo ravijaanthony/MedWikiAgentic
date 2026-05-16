@@ -1,0 +1,75 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .input-field {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 shadow-sm
+      transition-colors placeholder:text-slate-400
+      hover:border-slate-300
+      focus:border-clinical-500 focus:outline-none focus:ring-4 focus:ring-clinical-100;
+  }
+
+  .input-field-lg {
+    @apply input-field text-lg py-3.5;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-clinical-700 px-5 py-3 text-sm font-semibold text-white shadow-sm
+      transition-all hover:bg-clinical-800 hover:shadow-md
+      focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-clinical-200
+      disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm
+      transition-all hover:border-clinical-200 hover:bg-clinical-50
+      focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-clinical-100
+      disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600
+      transition-colors hover:bg-clinical-50 hover:text-clinical-900
+      focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-clinical-100;
+  }
+
+  .btn-primary-lg {
+    @apply btn-primary min-h-[52px] w-full px-8 text-base sm:w-auto sm:min-w-[200px];
+  }
+
+  .option-card {
+    @apply flex cursor-pointer items-center justify-center rounded-2xl border-2 border-transparent bg-white p-4 shadow-card
+      transition-all hover:border-slate-200;
+  }
+
+  .option-card-selected {
+    @apply border-clinical-600 bg-clinical-50/80 ring-4 ring-clinical-100;
+  }
+
+  .immersive-bg {
+    @apply bg-slate-50;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(26, 69, 120, 0.14), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(15, 40, 97, 0.08), transparent);
+  }
+
+  .immersive-step-enter {
+    @apply animate-fade-up;
+  }
+
+  .immersive-nav-bar {
+    @apply mt-auto border-t border-slate-200/60 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent pt-6;
+  }
+}
+
+.citation-highlight {
+  @apply bg-amber-200/80 ring-2 ring-amber-400 rounded px-0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-in {
+    animation: none !important;
+  }
+}
